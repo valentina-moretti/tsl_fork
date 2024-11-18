@@ -15,6 +15,7 @@ __all__ = [
     'RNNImputerModel',
     'BiRNNImputerModel',
     'STIDModel',
+    'DLinearModel',
 ]
 
 classes = __all__

@@ -2,7 +2,7 @@ defaults:
   - _self_
   - logger: null
   - dataset: la
-  - model: dcrnn
+  - model: dlinear
 
 #### Experiment params ########################################################
 hydra:

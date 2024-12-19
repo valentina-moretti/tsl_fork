@@ -17,6 +17,8 @@ __all__ = [
     'mre',
     'pinball_loss',
     'multi_quantile_pinball_loss',
+    'maape',
+    'mase',
 ]
 
 ReductionType = Literal['mean', 'sum', 'none']
@@ -468,3 +470,78 @@ def multi_quantile_pinball_loss(y_hat, y, q):
     for i, qi in enumerate(q):
         loss += pinball_loss(y_hat[i], y, qi)
     return loss
+
+
+
+
+
+
+def maape(
+    y_hat: torch.Tensor,
+    y: torch.Tensor,
+    mask: Optional[torch.Tensor] = None,
+    reduction: str = "mean",
+    nan_to_zero: bool = False
+) -> torch.Tensor:
+    r"""Compute the Mean Arctangent Absolute Percentage Error (MAAPE).
+    i.e.
+
+    .. math::
+
+        \text{MAAPE} = \frac{1}{n} \sum_{i=1}^n \arctan\left(\frac{|\hat{y}_i - y_i|}{y_i}\right)
+
+    Args:
+        y_hat (torch.Tensor): The estimated variable.
+        y (torch.Tensor): The ground-truth variable.
+        mask (torch.Tensor, optional): If provided, compute the metric using only
+            the values at valid indices (with :attr:`mask` set to :obj:`True`).
+        reduction (str): Specifies the reduction to apply to the output:
+            ``'none'`` | ``'mean'`` | ``'sum'``. (default: ``'mean'``)
+        nan_to_zero (bool): If :obj:`True`, then masked values in output are
+            converted to :obj:`0`. (default: :obj:`False`)
+
+    Returns:
+        torch.Tensor: The Mean Arctangent Absolute Percentage Error
+    """
+    ratio = torch.abs(y_hat - y) / (torch.abs(y) + tsl.epsilon)  # epsilon for stability
+    aape = torch.atan(ratio)
+    return _masked_reduce(aape, reduction, mask, nan_to_zero)
+
+
+
+
+
+def mase(
+    y_hat: torch.Tensor,
+    y: torch.Tensor,
+    mask: Optional[torch.Tensor] = None,
+    reduction: str = "mean",
+    nan_to_zero: bool = False
+) -> torch.Tensor:
+    r"""Compute the `Mean Absolute Scaled Error (MASE)`.
+
+    .. math::
+
+        \text{MASE} = \frac{\text{mean}(|\hat{y} - y|)}
+        {\text{mean}(|y_t - y_{t-1}|)}
+
+    Args:
+        y_hat (torch.Tensor): The estimated variable.
+        y (torch.Tensor): The ground-truth variable.
+        mask (torch.Tensor, optional): If provided, compute the metric using only
+            the values at valid indices (with :attr:`mask` set to :obj:`True`).
+        reduction (str): Specifies the reduction to apply to the output:
+            ``'none'`` | ``'mean'`` | ``'sum'``. (default: ``'mean'``)
+        nan_to_zero (bool): If :obj:`True`, then masked values in output are
+            converted to :obj:`0`. (default: :obj:`False`)
+
+    Returns:
+        torch.Tensor: The Mean Absolute Scaled Error
+    """
+    
+    mae_err = torch.abs(y_hat - y)
+    # mean absolute difference of consecutive observations
+    denominator = torch.mean(torch.abs(y[:, 1:] - y[:, :-1]), dim=1) + torch.finfo(torch.float).eps  # epsilon for stability
+    denominator = denominator.unsqueeze(1)
+    scaled_error = mae_err / denominator
+    return _masked_reduce(scaled_error, reduction, mask, nan_to_zero)

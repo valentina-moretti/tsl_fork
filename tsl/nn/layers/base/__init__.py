@@ -4,6 +4,7 @@ from .attention import (AttentionEncoder, MultiHeadAttention,
 from .dense import Dense
 from .embedding import NodeEmbedding
 from .temporal_conv import GatedTemporalConv, TemporalConv
+from .invertible import RevIN
 
 __all__ = [
     'Dense',
@@ -14,6 +15,7 @@ __all__ = [
     'MultiHeadAttention',
     'TemporalSelfAttention',
     'SpatialSelfAttention',
+    'RevIN',
 ]
 
 classes = __all__

@@ -1,0 +1,38 @@
+defaults:
+  - default
+  - override logger: neptune
+  - override optimizer: adam
+  - override hydra/sweeper: optuna # {optuna, basic}
+  - override hydra/sweeper/sampler: grid # {tpe, random, grid}
+
+
+  - _self_
+
+default_tags:
+  - ${model.name}
+  - ${dataset.name}
+  - tpe
+  
+#### Experiment params ########################################################
+hydra:
+  mode: MULTIRUN
+  sweeper:
+    direction: minimize  # minimize if loss is MSE
+    n_trials: 9
+    n_jobs: 1
+    storage: null
+    params:
+      # Constant params
+      window: 64, 96, 128
+      optimizer.hparams.lr: 0.0001, 0.0005, 0.001
+      dataset: etth1
+      model: rnn
+      lr_scheduler: exp
+      batch_size: 64
+      # model.hparams.kernel_size: 7, 15, 31
+
+      
+      
+
+run:
+  max_workers: 1

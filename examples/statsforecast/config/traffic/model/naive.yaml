@@ -2,8 +2,6 @@
 
 #### Model params #############################################################
 model:
-  name: dlinear
+  name: naive
   hparams:
-    kernel_size: 23
-    bool_individual: True
     

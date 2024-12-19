@@ -1,0 +1,13 @@
+# @package _global_
+
+#### Model params #############################################################
+model:
+  name: mstl
+  hparams:
+    season_length: 24
+    p: 24
+    d: 1
+    q: 1
+
+    # autoarima e season 24, trim 100 --> 1.32238
+    # autoarima e season 24, trim 1000 --> 1.2957

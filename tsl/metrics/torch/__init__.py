@@ -9,6 +9,8 @@ from .metrics import (
     MaskedMRE,
     MaskedMSE,
     MaskedSMAPE,
+    MaskedMASE,
+    MaskedMAAPE
 )
 from .pinball_loss import MaskedPinballLoss
 
@@ -29,6 +31,8 @@ masked_metric_classes = [
     'MaskedMAPE',
     'MaskedSMAPE',
     'MaskedPinballLoss',
+    'MaskedMASE',
+    'MaskedMAAPE'
 ]
 
 __all__ = masked_metric_classes + functional_methods + wrappers_classes + utils_methods

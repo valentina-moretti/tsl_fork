@@ -2,8 +2,8 @@
 
 #### Model params #############################################################
 model:
-  name: dlinear
+  name: es_trainable
   hparams:
-    kernel_size: 23
-    bool_individual: True
+    alpha: 0.8
+  
     

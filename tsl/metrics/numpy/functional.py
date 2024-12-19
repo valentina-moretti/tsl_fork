@@ -22,6 +22,8 @@ __all__ = [
     "mre",
     "mase_time",
     "rae",
+    "maape",
+    "mase"
 ]
 
 
@@ -489,3 +491,95 @@ def rae(y_hat: np.ndarray, y: np.ndarray, mask: Optional[np.ndarray] = None) -> 
     numerator = np.sum(np.abs(y - y_hat))
     denominator = np.sum(np.abs(y - np.mean(y)))
     return numerator / denominator
+
+
+
+
+
+def maape(
+    y_hat: FrameArray,
+    y: FrameArray,
+    mask: Optional[FrameArray] = None,
+    reduction: ReductionType = "mean",
+    nan_to_zero: bool = False
+) -> MetricOutputType:
+    r"""Compute the Mean Arctangent Absolute Percentage Error (MAAPE) https://linkinghub.elsevier.com/retrieve/pii/S0169207016000121
+    i.e.
+
+    .. math::
+
+        \text{MAAPE} = \frac{1}{n} \sum_{i=1}^n \arctan\left(\frac{|\hat{y}_i - y_i|}{y_i}\right)
+
+    Args:
+        y_hat (FrameArray): The estimated variable.
+        y (FrameArray): The ground-truth variable.
+        mask (FrameArray, optional): If provided, compute the metric using only
+            the values at valid indices (with :attr:`mask` set to :obj:`True`).
+            If :attr:`mask` is not :obj:`None` and :attr:`reduction` is
+            :obj:`'none'`, masked indices are set to :obj:`nan` (see
+            :attr:`nan_to_zero`).
+            (default: :obj:`None`)
+        reduction (str): Specifies the reduction to apply to the output:
+            ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will
+            be applied, ``'mean'``: the sum of the output will be divided by the
+            number of elements in the output, ``'sum'``: the output will be
+            summed. (default: ``'mean'``)
+        nan_to_zero (bool): If :obj:`True`, then masked values in output are
+            converted to :obj:`0`. This has an effect only when :attr:`mask` is
+            not :obj:`None` and :attr:`reduction` is :obj:`'none'`.
+            (default: :obj:`False`)
+
+    Returns:
+        float | np.ndarray: The Mean Arctangent Absolute Percentage Error
+    """
+    ratio = np.abs(y_hat - y) / (np.abs(y) + tsl.epsilon)  # epsilon for stability
+    aape = np.arctan(ratio)
+    return _masked_reduce(aape, reduction, mask, nan_to_zero)
+
+
+def mase(
+    y_hat: FrameArray,
+    y: FrameArray,
+    mask: Optional[FrameArray] = None,
+    reduction: ReductionType = "mean",
+    nan_to_zero: bool = False
+) -> MetricOutputType:
+    r"""Compute the `Mean Absolute Scaled Error (MASE)
+    <https://robjhyndman.com/papers/forecast-accuracy.pdf>
+    i.e.
+
+    .. math::
+
+        \text{MASE} = \frac{\text{mean}(|\hat{y} - y|)}
+        {\text{mean}(|y_t - y_{t-1}|)}
+
+    Args:
+        y_hat (FrameArray): The estimated variable.
+        y (FrameArray): The ground-truth variable.
+        mask (FrameArray, optional): If provided, compute the metric using only
+            the values at valid indices (with :attr:`mask` set to :obj:`True`).
+            If :attr:`mask` is not :obj:`None` and :attr:`reduction` is
+            :obj:`'none'`, masked indices are set to :obj:`nan` (see
+            :attr:`nan_to_zero`).
+            (default: :obj:`None`)
+        reduction (str): Specifies the reduction to apply to the output:
+            ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will
+            be applied, ``'mean'``: the sum of the output will be divided by the
+            number of elements in the output, ``'sum'``: the output will be
+            summed. (default: ``'mean'``)
+        nan_to_zero (bool): If :obj:`True`, then masked values in output are
+            converted to :obj:`0`. This has an effect only when :attr:`mask` is
+            not :obj:`None` and :attr:`reduction` is :obj:`'none'`.
+            (default: :obj:`False`)
+
+    Returns:
+        float | np.ndarray: The Mean Absolute Scaled Error
+    """
+    
+    mae_err = np.abs(y_hat - y)
+    
+    # mean absolute difference of consecutive observations
+    denominator = np.mean(np.abs(np.diff(y, axis=-1))) + tsl.epsilon  # epsilon for stability
+
+    scaled_error = mae_err / denominator    
+    return _masked_reduce(scaled_error, reduction, mask, nan_to_zero)

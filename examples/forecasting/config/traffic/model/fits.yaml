@@ -1,0 +1,11 @@
+# @package _global_
+
+#### Model params #############################################################
+model:
+  name: fits
+  hparams: 
+    bool_individual: False
+    base_T: 48
+    H_order: 2
+    cut_freq: 5
+    # warning the cut_freq has to be smaller than the window size

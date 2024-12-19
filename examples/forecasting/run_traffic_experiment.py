@@ -5,12 +5,14 @@ from omegaconf import DictConfig
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import Logger, TensorBoardLogger, WandbLogger
-
+from tsl.datasets.ltsf_benchmarks import ETTh1, ETTh2, ETTm1, ETTm2
+from tsl.utils.plot import numpy_plot
 from tsl import logger
 from tsl.data import SpatioTemporalDataModule, SpatioTemporalDataset
 from tsl.data.preprocessing import StandardScaler
 from tsl.datasets import MetrLA, PemsBay
 from tsl.datasets.pems_benchmarks import PeMS03, PeMS04, PeMS07, PeMS08
+from tsl.datasets.ltsf_benchmarks import ETTh1
 from tsl.engines import Predictor
 from tsl.experiment import Experiment, NeptuneLogger
 from tsl.metrics import numpy as numpy_metrics
@@ -44,6 +46,14 @@ def get_model_class(model_str):
         model = models.VARModel
     elif model_str == 'dlinear':
         model = models.DLinearModel
+    elif model_str == 'nlinear':
+        model = models.NLinearModel
+    elif model_str == 'rlinear':
+        model = models.RLinearModel
+    elif model_str == 'fits':
+        model = models.FITSLinearModel
+    elif model_str == 'es_trainable':
+        model = models.ExponentialSmoothingModel
     elif model_str == 'rnn':
         model = models.RNNModel
     elif model_str == 'fcrnn':
@@ -55,7 +65,7 @@ def get_model_class(model_str):
     return model
 
 
-def get_dataset(dataset_name):
+def get_dataset(dataset_name, drop_first=False, cfg_dataset=None): # TODO decide drop_first
     if dataset_name == 'la':
         dataset = MetrLA(impute_zeros=True)  # From Li et al. (ICLR 2018)
     elif dataset_name == 'bay':
@@ -68,6 +78,14 @@ def get_dataset(dataset_name):
         dataset = PeMS07()  # From Guo et al. (2021)
     elif dataset_name == 'pems8':
         dataset = PeMS08()  # From Guo et al. (2021)
+    elif dataset_name == 'etth1':
+        dataset = ETTh1(root='../tsl/.storage/ETTh1', drop_first=drop_first, dataset_name=cfg_dataset.name)
+    elif dataset_name == 'etth2':
+        dataset = ETTh2(root='../tsl/.storage/ETTh1', drop_first=drop_first, dataset_name=cfg_dataset.name)
+    elif dataset_name == 'ettm1':
+        dataset = ETTm1(root='../tsl/.storage/ETTh1', drop_first=drop_first, dataset_name=cfg_dataset.name)
+    elif dataset_name == 'ettm2':
+        dataset = ETTm2(root='../tsl/.storage/ETTh1', drop_first=drop_first, dataset_name=cfg_dataset.name)
     else:
         raise ValueError(f"Dataset {dataset_name} not available.")
     return dataset
@@ -86,12 +104,12 @@ def get_logger(cfg: DictConfig, exp: Experiment) -> Optional[Logger]:
                                  config=exp.get_config_dict(),
                                  tags=cfg.tags)
     elif cfg.logger.backend == 'neptune':
-        exp_logger = NeptuneLogger(project_name=cfg.neptune.project,
+        exp_logger = NeptuneLogger(project_name=cfg.logger.project,
                                    experiment_name=cfg.run.name,
                                    save_dir=cfg.run.dir,
                                    tags=cfg.tags,
                                    params=exp.get_config_dict(),
-                                   debug=cfg.neptune.offline)
+                                   debug=cfg.logger.offline)
     elif cfg.logger.backend == 'tensorboard':
         exp_name = f'{cfg.run.name}_{"_".join(cfg.tags)}'
         exp_logger = TensorBoardLogger(save_dir=cfg.run.dir, name=exp_name)
@@ -104,13 +122,16 @@ def run_traffic(cfg: DictConfig):
     ########################################
     # data module                          #
     ########################################
-    dataset = get_dataset(cfg.dataset.name)
+    dataset = get_dataset(dataset_name=cfg.dataset.name, cfg_dataset=cfg.dataset)
 
     # encode time of the day and use it as exogenous variable
-    covariates = {'u': dataset.datetime_encoded('day').values}
+    covariates = {'u': dataset.datetime_encoded(['hour', 'day']).values}
 
     # get adjacency matrix
-    adj = dataset.get_connectivity(**cfg.dataset.connectivity)
+    if "ett" in cfg.dataset.name:
+        adj = None
+    else:
+        adj = dataset.get_connectivity(**cfg.dataset.connectivity)
 
     torch_dataset = SpatioTemporalDataset(
         target=dataset.dataframe(),
@@ -143,12 +164,13 @@ def run_traffic(cfg: DictConfig):
                         input_size=torch_dataset.n_channels,
                         output_size=torch_dataset.n_channels,
                         horizon=torch_dataset.horizon,
+                        window=torch_dataset.window,
                         exog_size=torch_dataset.input_map.u.shape[-1])
 
     model_cls.filter_model_args_(model_kwargs)
     model_kwargs.update(cfg.model.hparams)
 
-    loss_fn = torch_metrics.MaskedMAE()
+    loss_fn = torch_metrics.MaskedMSE()
 
     log_metrics = {
         'mae': torch_metrics.MaskedMAE(),
@@ -157,6 +179,8 @@ def run_traffic(cfg: DictConfig):
         'mae_at_15': torch_metrics.MaskedMAE(at=2),  # 3rd is 15 min
         'mae_at_30': torch_metrics.MaskedMAE(at=5),  # 6th is 30 min
         'mae_at_60': torch_metrics.MaskedMAE(at=11),  # 12th is 1 h
+        'mase': torch_metrics.MaskedMASE(),
+        'maape': torch_metrics.MaskedMAAPE(),
     }
 
     if cfg.lr_scheduler is not None:
@@ -167,6 +191,7 @@ def run_traffic(cfg: DictConfig):
         scheduler_class = scheduler_kwargs = None
 
     # setup predictor
+    # if cfg.model.name != 'es':
     predictor = Predictor(
         model_class=model_cls,
         model_kwargs=model_kwargs,
@@ -178,6 +203,7 @@ def run_traffic(cfg: DictConfig):
         scheduler_kwargs=scheduler_kwargs,
         scale_target=cfg.scale_target,
     )
+    
 
     ########################################
     # training                             #
@@ -205,9 +231,8 @@ def run_traffic(cfg: DictConfig):
         gradient_clip_val=cfg.grad_clip_val,
         callbacks=[early_stop_callback, checkpoint_callback],
     )
-
     trainer.fit(predictor, datamodule=dm)
-
+    
     ########################################
     # testing                              #
     ########################################
@@ -220,28 +245,40 @@ def run_traffic(cfg: DictConfig):
     output = trainer.predict(predictor, dataloaders=dm.test_dataloader())
     output = predictor.collate_prediction_outputs(output)
     output = torch_to_numpy(output)
+
+
+        
     y_hat, y_true, mask = (output['y_hat'], output['y'],
-                           output.get('mask', None))
+                        output.get('mask', None))
+    
     res = dict(test_mae=numpy_metrics.mae(y_hat, y_true, mask),
-               test_rmse=numpy_metrics.rmse(y_hat, y_true, mask),
-               test_mape=numpy_metrics.mape(y_hat, y_true, mask))
+            test_rmse=numpy_metrics.rmse(y_hat, y_true, mask),
+            test_mape=numpy_metrics.mape(y_hat, y_true, mask),
+            test_mase=numpy_metrics.mase(y_hat, y_true, mask),
+            test_maape=numpy_metrics.maape(y_hat, y_true, mask))
 
     output = trainer.predict(predictor, dataloaders=dm.val_dataloader())
     output = predictor.collate_prediction_outputs(output)
     output = torch_to_numpy(output)
     y_hat, y_true, mask = (output['y_hat'], output['y'],
-                           output.get('mask', None))
+                        output.get('mask', None))
+        
     res.update(
         dict(val_mae=numpy_metrics.mae(y_hat, y_true, mask),
-             val_rmse=numpy_metrics.rmse(y_hat, y_true, mask),
-             val_mape=numpy_metrics.mape(y_hat, y_true, mask)))
+            val_rmse=numpy_metrics.rmse(y_hat, y_true, mask),
+            val_mape=numpy_metrics.mape(y_hat, y_true, mask),
+            val_mase=numpy_metrics.mase(y_hat, y_true, mask),
+            val_maape=numpy_metrics.maape(y_hat, y_true, mask))
+    )
+   
+    numpy_plot(len_pred=cfg.horizon, y_hat=y_hat, title='Dlinear Forecasting', y_true=y_true)
 
-    return res
+    return res['test_mae']
 
 
 if __name__ == '__main__':
     exp = Experiment(run_fn=run_traffic,
                      config_path='config/traffic',
-                     config_name='default')
+                     config_name='search')
     res = exp.run()
     logger.info(res)

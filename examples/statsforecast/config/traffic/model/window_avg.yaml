@@ -2,8 +2,6 @@
 
 #### Model params #############################################################
 model:
-  name: dlinear
+  name: window_avg
   hparams:
-    kernel_size: 23
-    bool_individual: True
-    
+    window_size: 24

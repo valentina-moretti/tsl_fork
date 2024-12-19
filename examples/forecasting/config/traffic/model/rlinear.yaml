@@ -2,8 +2,8 @@
 
 #### Model params #############################################################
 model:
-  name: dlinear
-  hparams:
-    kernel_size: 23
-    bool_individual: True
-    
+  name: rlinear
+  hparams: 
+    bool_individual: False
+    bool_rev: True
+    bool_drop: True

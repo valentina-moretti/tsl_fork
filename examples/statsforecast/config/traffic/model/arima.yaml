@@ -1,0 +1,16 @@
+# @package _global_
+
+#### Model params #############################################################
+model:
+  name: arima
+  hparams:
+    season_length: 1
+    p: 24 # AR
+    d: 1 # I
+    q: 1 # MA
+    # autoarima 1.41327
+    #5 24 1 --> 1.36894
+    #24 1 2 --> 1.2506 , trim da 100 a 1000--> 1.24197
+    #24 1 1 --> 1.2409, trim 1000
+    #5 1 24 --> nan
+    

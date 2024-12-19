@@ -136,3 +136,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+examples/statsforecast/slidingw_statsforecast_run_traffic_experiment.py
+examples/statsforecast/df_statsforecast_run_traffic_experiment.py
+examples/statsforecast/1statsforecast_run_traffic_experiment.py
+examples/statsforecast/2statsforecast_run_traffic_experiment.py
+tsl/nn/models/temporal/statsforecast_model.py
+tsl/engines/ltsf_predictor.py

@@ -1,10 +1,8 @@
 defaults:
   - _self_
+  - logger: null
   - dataset: etth1
-  - model: dlinear
-  - logger: neptune
-  - lr_scheduler: cosine
-  - optimizer: adam
+  - model: arima
 
 #### Experiment params ########################################################
 hydra:
@@ -23,6 +21,7 @@ tags:
 workers: 0
 num_threads: 1  # limit the number of pytorch threads spawn
 
+logger: null
 
 #### Windowing params #########################################################
 window: 96
@@ -30,10 +29,24 @@ horizon: 1
 stride: 1
 
 #### Training params ##########################################################
-epochs: 30
+epochs: 300
 patience: 50
 batch_size: 64
 grad_clip_val: 5
 scale_target: False
+n_samples_trim: 500 #TODO put 1000
 
+optimizer:
+  name: Adam
+  hparams:
+    lr: 0.01
+    weight_decay: 0
 
+lr_scheduler: null
+
+bool_mov_avg: False
+
+mov_avg_window: 3
+mov_avg_stride: 1
+
+bool_exog: False

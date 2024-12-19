@@ -2,8 +2,7 @@
 
 #### Model params #############################################################
 model:
-  name: dlinear
+  name: autotheta
   hparams:
-    kernel_size: 23
-    bool_individual: True
+    season_length: 1
     

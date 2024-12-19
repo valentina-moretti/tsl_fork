@@ -6,6 +6,7 @@ data = LazyLoader('data', globals(), 'tsl.data')
 datasets = LazyLoader('datasets', globals(), 'tsl.datasets')
 nn = LazyLoader('nn', globals(), 'tsl.nn')
 engines = LazyLoader('engines', globals(), 'tsl.engines')
+utils = LazyLoader('utils', globals(), 'tsl.utils')
 
 __version__ = '0.9.5'
 
@@ -21,4 +22,5 @@ __all__ = [
     'datasets',
     'nn',
     'engines',
+    'utils',
 ]

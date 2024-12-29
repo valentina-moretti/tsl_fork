@@ -11,16 +11,13 @@ def stats_moving_average(input_array, kernel_size, stride=1):
     """
     time_steps, nodes = input_array.shape
     
-    # Symmetric padding on both ends of the time dimension
-    pad_width = (kernel_size - 1) // 2
-    front = np.repeat(input_array[:1, :], pad_width, axis=0)
-    end = np.repeat(input_array[-1:, :], pad_width, axis=0)
-    padded_array = np.concatenate([front, input_array, end], axis=0)
+    # Pad just on the LEFT using the first value of the input array
+    front = np.repeat(input_array[0:1, :], kernel_size - 1, axis=0)
+    padded_array = np.concatenate([front, input_array], axis=0)
     
-    output_length = (time_steps + 2 * pad_width - kernel_size) // stride + 1
-    output = np.zeros((output_length, nodes))
+    output = np.zeros((len(input_array), nodes))
     
-    for i in range(output_length):
+    for i in range(time_steps):
         start = i * stride
         end = start + kernel_size
         output[i, :] = np.mean(padded_array[start:end, :], axis=0)

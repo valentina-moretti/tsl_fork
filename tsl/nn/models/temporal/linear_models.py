@@ -121,7 +121,7 @@ class moving_avg(BaseModel):
         return x
 
 
-class series_decomp(BaseModel):
+class series_decomp(nn.Module):
     """
     Series decomposition block
     """

@@ -531,65 +531,41 @@ class Elergone(_LTSFDataset):
         return ['electricity.txt.gz']
 
 
-
-###################   SPLITTERS   ###################
-class ETTSplitter(Splitter):
-    def __init__(self, 
-                 dataset: str,
-                 seq_len: int = 336, horizon: int = 720,
-                 ):
-        super().__init__()
-        self.dataset = dataset
-        self.seq_len = seq_len
-        self.horizon = horizon
-        
-    
-        # define the indices for the train, validation and test sets
-
-        if dataset == 'ETTh1' or dataset == 'ETTh2' : #or dataset == 'ETTh2_Paper':
-            self.val_start = 8304
-            self.test_start = 11184 
-            self.max_len = 14400
-            
-           
-            
-        elif dataset == 'ETTm1' or dataset == 'ETTm2':
-            self.val_start = 34224
-            self.test_start = 45744
-            self.max_len = 57600
-        
-        
-        else:
-            raise ValueError(f"Dataset {dataset} not available.")
-    
-         
-    
-    def fit(self, dataset):
-        idx = np.arange(len(dataset))
-        self.set_indices(idx[:self.val_start - self.horizon],
-                        idx[self.val_start :self.test_start - self.horizon],
-                        idx[self.test_start:self.max_len- self.horizon-self.seq_len ])
-
-
-    
-
 # at timestep splitter
-class Custom_Splitter(Splitter):
-    def __init__(self, seq_len, horizon):
+class ETTSplitter(Splitter):
+    def __init__(self, dataset_name, seq_len, horizon):
         self.seq_len = seq_len
         self.horizon = horizon
-        super(Custom_Splitter, self).__init__()
+        self.dataset_name = dataset_name
+        super(ETTSplitter, self).__init__()
 
     def fit(self, dataset: _LTSFDataset) -> dict:
         
         idx = np.arange(len(dataset))
-        test_len = int(0.2 * len(idx))
-        val_len = int(0.1 * (len(idx)-test_len))
-        test_start = len(idx) - test_len
-        val_start = test_start - val_len
-        self.set_indices(idx[:val_start - self.seq_len],
-                         idx[val_start:test_start - self.seq_len],
-                         idx[test_start:])
+        # len_dataset = len(dataset)
+        # test_len = int(0.2 * len(idx))
+        # train_len = int(0.7 * len(idx))
+        
+        # val_len = len_dataset - train_len - test_len
+        # test_start = len(idx) - test_len
+        # val_end = train_len + val_len
+        # self.set_indices(idx[:train_len - self.seq_len - self.horizon],
+        #                  idx[train_len:val_end - self.seq_len - self.horizon],
+        #                  idx[val_end:])
 
+        # return self.indices
+    
+
+        # #TODO: remove this
+        if self.dataset_name == 'etth1' or self.dataset_name == 'etth2':
+            self.set_indices(idx[:(12 * 30 * 24) - self.seq_len - self.horizon +1 ],
+                            idx[(12 * 30 * 24)- self.seq_len  : (12 * 30 * 24 + 4 * 30 * 24) - self.seq_len - self.horizon +1 ],
+                            idx[(12 * 30 * 24 + 4 * 30 * 24- self.seq_len ) : 12 * 30 * 24 + 8 * 30 * 24 - self.seq_len - self.horizon+1 ])
+        elif self.dataset_name == 'ettm1' or self.dataset_name == 'ettm2':
+            self.set_indices(idx[:(12 * 30 * 96) - self.seq_len - self.horizon +1 ],
+                            idx[(12 * 30 * 96)- self.seq_len  : (12 * 30 * 96 + 4 * 30 * 96) - self.seq_len - self.horizon +1 ],
+                            idx[(12 * 30 * 96 + 4 * 30 * 96)- self.seq_len  : 12 * 30 * 96 + 8 * 30 * 96 - self.seq_len - self.horizon+1 ])
+        
+        
         return self.indices
     

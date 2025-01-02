@@ -5,20 +5,24 @@ from omegaconf import DictConfig
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import Logger, TensorBoardLogger, WandbLogger
-from tsl.datasets.ltsf_benchmarks import ETTh1, ETTh2, ETTm1, ETTm2
+from tsl.datasets.ltsf_benchmarks import ETTh1, ETTh2, ETTm1, ETTm2, ETTSplitter, ElectricityDataset
 from tsl.utils.plot import numpy_plot
 from tsl import logger
 from tsl.data import SpatioTemporalDataModule, SpatioTemporalDataset
 from tsl.data.preprocessing import StandardScaler
 from tsl.datasets import MetrLA, PemsBay
 from tsl.datasets.pems_benchmarks import PeMS03, PeMS04, PeMS07, PeMS08
-from tsl.datasets.ltsf_benchmarks import ETTh1
 from tsl.engines import Predictor
 from tsl.experiment import Experiment, NeptuneLogger
 from tsl.metrics import numpy as numpy_metrics
 from tsl.metrics import torch as torch_metrics
 from tsl.nn import models
 from tsl.utils.casting import torch_to_numpy
+import random
+import pytorch_lightning as pl
+import numpy as np
+import gc
+import urllib3
 
 
 def get_model_class(model_str):
@@ -86,6 +90,8 @@ def get_dataset(dataset_name, drop_first=False, cfg_dataset=None): # TODO decide
         dataset = ETTm1(root='../tsl/.storage/ETTh1', drop_first=drop_first, dataset_name=cfg_dataset.name)
     elif dataset_name == 'ettm2':
         dataset = ETTm2(root='../tsl/.storage/ETTh1', drop_first=drop_first, dataset_name=cfg_dataset.name)
+    elif dataset_name == 'electricity':
+        dataset = ElectricityDataset(root='./tsl/.storage/electricity', drop_first=drop_first, dataset_name=cfg_dataset.name)
     else:
         raise ValueError(f"Dataset {dataset_name} not available.")
     return dataset
@@ -109,7 +115,8 @@ def get_logger(cfg: DictConfig, exp: Experiment) -> Optional[Logger]:
                                    save_dir=cfg.run.dir,
                                    tags=cfg.tags,
                                    params=exp.get_config_dict(),
-                                   debug=cfg.logger.offline)
+                                   debug=cfg.logger.offline,
+                                   upload_stdout=False)
     elif cfg.logger.backend == 'tensorboard':
         exp_name = f'{cfg.run.name}_{"_".join(cfg.tags)}'
         exp_logger = TensorBoardLogger(save_dir=cfg.run.dir, name=exp_name)
@@ -122,16 +129,21 @@ def run_traffic(cfg: DictConfig):
     ########################################
     # data module                          #
     ########################################
+    pl.seed_everything(cfg.seed)
+    random.seed(cfg.seed)
+    np.random.seed(cfg.seed)
+    torch.manual_seed(cfg.seed)
+    torch.cuda.manual_seed(cfg.seed)
+    torch.cuda.manual_seed_all(cfg.seed)
+
     dataset = get_dataset(dataset_name=cfg.dataset.name, cfg_dataset=cfg.dataset)
 
     # encode time of the day and use it as exogenous variable
     covariates = {'u': dataset.datetime_encoded(['hour', 'day']).values}
 
     # get adjacency matrix
-    if "ett" in cfg.dataset.name:
-        adj = None
-    else:
-        adj = dataset.get_connectivity(**cfg.dataset.connectivity)
+    adj = None
+    # adj = dataset.get_connectivity(**cfg.dataset.connectivity)
 
     torch_dataset = SpatioTemporalDataset(
         target=dataset.dataframe(),
@@ -143,12 +155,18 @@ def run_traffic(cfg: DictConfig):
         stride=cfg.stride,
     )
 
-    transform = {'target': StandardScaler(axis=(0, 1))}  # axis: time&space
+    # transform = {'target': StandardScaler(axis=(0))}  # axis: time&space #TODO rimettere axis=(0, 1), ho messo solo 0 perchè lo fa toner
 
+    # TODO togliere splitter
+    if cfg.dataset.name in ['etth1', 'etth2', 'ettm1', 'ettm2']:
+        splitter = ETTSplitter(dataset_name=cfg.dataset.name, seq_len=cfg.window, horizon=cfg.horizon)
+    else:
+        splitter = dataset.get_splitter(**cfg.dataset.splitting)
+    
     dm = SpatioTemporalDataModule(
         dataset=torch_dataset,
-        scalers=transform,
-        splitter=dataset.get_splitter(**cfg.dataset.splitting),
+        # scalers=transform,
+        splitter=splitter,
         batch_size=cfg.batch_size,
         workers=cfg.workers,
     )
@@ -230,6 +248,7 @@ def run_traffic(cfg: DictConfig):
         devices=1,
         gradient_clip_val=cfg.grad_clip_val,
         callbacks=[early_stop_callback, checkpoint_callback],
+        log_every_n_steps=100, #100,
     )
     trainer.fit(predictor, datamodule=dm)
     
@@ -257,22 +276,32 @@ def run_traffic(cfg: DictConfig):
             test_mase=numpy_metrics.mase(y_hat, y_true, mask),
             test_maape=numpy_metrics.maape(y_hat, y_true, mask))
 
-    output = trainer.predict(predictor, dataloaders=dm.val_dataloader())
-    output = predictor.collate_prediction_outputs(output)
-    output = torch_to_numpy(output)
-    y_hat, y_true, mask = (output['y_hat'], output['y'],
-                        output.get('mask', None))
+    # TODO put again when I restore scaling for test
+    # output = trainer.predict(predictor, dataloaders=dm.val_dataloader())
+    # output = predictor.collate_prediction_outputs(output)
+    # output = torch_to_numpy(output)
+    # y_hat, y_true, mask = (output['y_hat'], output['y'],
+    #                     output.get('mask', None))
         
-    res.update(
-        dict(val_mae=numpy_metrics.mae(y_hat, y_true, mask),
-            val_rmse=numpy_metrics.rmse(y_hat, y_true, mask),
-            val_mape=numpy_metrics.mape(y_hat, y_true, mask),
-            val_mase=numpy_metrics.mase(y_hat, y_true, mask),
-            val_maape=numpy_metrics.maape(y_hat, y_true, mask))
-    )
+    # res.update(
+    #     dict(val_mae=numpy_metrics.mae(y_hat, y_true, mask),
+    #         val_rmse=numpy_metrics.rmse(y_hat, y_true, mask),
+    #         val_mape=numpy_metrics.mape(y_hat, y_true, mask),
+    #         val_mase=numpy_metrics.mase(y_hat, y_true, mask),
+    #         val_maape=numpy_metrics.maape(y_hat, y_true, mask))
+    # )
    
-    numpy_plot(len_pred=cfg.horizon, y_hat=y_hat, title='Dlinear Forecasting', y_true=y_true)
-
+    # numpy_plot(len_pred=cfg.horizon, y_hat=y_hat, title='Dlinear Forecasting', y_true=y_true)
+    
+    
+    exp_logger.finalize('success')
+    trainer.logger.finalize('success')
+    exp_logger.experiment.stop()
+    del predictor, trainer, dm, exp_logger, checkpoint_callback, early_stop_callback
+    torch.cuda.empty_cache()
+    gc.collect()
+    urllib3.PoolManager().clear()
+   
     return res['test_mae']
 
 
@@ -281,4 +310,6 @@ if __name__ == '__main__':
                      config_path='config/traffic',
                      config_name='search')
     res = exp.run()
-    logger.info(res)
+    logger.info(res) 
+
+

@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - dataset: etth1
+  - dataset: ettm1
   - model: dlinear
   - logger: neptune
   - lr_scheduler: cosine
@@ -14,7 +14,7 @@ hydra:
     dir: logs/${now:%Y-%m-%d-%H-%M-%S}
     subdir: ${model.name}/${dataset.name}/${hydra.job.num}
 
-seed: 42  # automatically set everywhere the seed
+seed: 114  # automatically set everywhere the seed
 tags:
   - 'traffic'
   - ${model.name}
@@ -26,12 +26,12 @@ num_threads: 1  # limit the number of pytorch threads spawn
 
 #### Windowing params #########################################################
 window: 96
-horizon: 1
+horizon: 96
 stride: 1
 
 #### Training params ##########################################################
-epochs: 30
-patience: 50
+epochs: 1
+patience: 10
 batch_size: 64
 grad_clip_val: 5
 scale_target: False

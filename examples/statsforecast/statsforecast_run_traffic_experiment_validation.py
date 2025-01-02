@@ -17,7 +17,7 @@ from tsl.data import SpatioTemporalDataModule, SpatioTemporalDataset
 from tsl.data.preprocessing import StandardScaler
 from tsl.datasets import MetrLA, PemsBay
 from tsl.datasets.pems_benchmarks import PeMS03, PeMS04, PeMS07, PeMS08
-from tsl.datasets.ltsf_benchmarks import ETTh1, ETTh2, ETTm1, ETTm2
+from tsl.datasets.ltsf_benchmarks import ETTh1, ETTh2, ETTm1, ETTm2, ETTSplitter, ElectricityDataset
 from tsl.engines import Predictor
 from tsl.experiment import Experiment, NeptuneLogger
 from tsl.metrics import numpy as numpy_metrics
@@ -63,7 +63,6 @@ def get_model_class(model_str, cfg, **kwargs):
         model = stat_models.HoltWinters()
     elif model_str == 'mstl':
         model = stat_models.MSTL(season_length=[cfg.model.hparams.season_length ], trend_forecaster=stat_models.ARIMA(order=(cfg.model.hparams.p, cfg.model.hparams.d, cfg.model.hparams.q)))
-
     # ... add more models from https://github.com/Nixtla/statsforecast/blob/1e6d98c111cd33ec9ac45ab7e1b7b11b428e897b/python/statsforecast/models.py#L114
     # TODO those for many ts are here https://nixtlaverse.nixtla.io/statsforecast/docs/getting-started/getting_started_complete.html
     else:
@@ -91,6 +90,10 @@ def get_dataset(dataset_name, cfg_dataset, drop_first=False):
         dataset = ETTm1(root='../tsl/.storage/ETTh1', drop_first=drop_first, dataset_name=cfg_dataset.name)
     elif dataset_name == 'ettm2':
         dataset = ETTm2(root='../tsl/.storage/ETTh1', drop_first=drop_first, dataset_name=cfg_dataset.name)
+    elif dataset_name == 'electricity':
+        dataset = ETTm2(root='./tsl/.storage/ETTh1', drop_first=drop_first, dataset_name=cfg_dataset.name)
+    elif dataset_name == 'electricity':
+        dataset = ElectricityDataset(root='./tsl/.storage/electricity', drop_first=drop_first, dataset_name=cfg_dataset.name)
     else:
         raise ValueError(f"Dataset {dataset_name} not available.")
     return dataset
@@ -100,6 +103,12 @@ def run_traffic(cfg: DictConfig):
     ########################################
     # data module                          #
     ########################################
+    
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
+    # torch.use_deterministic_algorithms(True)
+
+
     dataset = get_dataset(cfg.dataset.name, cfg.dataset)
 
     # encode time of the day and use it as exogenous variable
@@ -120,13 +129,17 @@ def run_traffic(cfg: DictConfig):
         stride=cfg.stride,
     )
 
-    transform = {'target': StandardScaler(axis=(0, 1))}  # axis: time&space
+    transform = {'target': StandardScaler(axis=(0))}  # TODO metteree axis=(0, 1) 
 
-    print('head', torch_dataset.dataframe().head())
+    # TODO togliere il splitter
+    if cfg.dataset.name in ['etth1', 'etth2', 'ettm1', 'ettm2']:
+        splitter = ETTSplitter(dataset_name=cfg.dataset.name, seq_len=cfg.window, horizon=cfg.horizon)
+    else:
+        splitter = dataset.get_splitter(**cfg.dataset.splitting)
     dm = SpatioTemporalDataModule(
         dataset=torch_dataset,
         scalers=transform,
-        splitter=dataset.get_splitter(**cfg.dataset.splitting),
+        splitter=splitter,
         batch_size=cfg.batch_size,
         workers=cfg.workers,
     )
@@ -142,17 +155,31 @@ def run_traffic(cfg: DictConfig):
     model = get_model_class(cfg.model.name, cfg)
     
 
-    # the model is fitted with the data to the last index of the validation set (of the horizon)
-    val_target_indices_last = torch_dataset.get_horizon_indices(dm.testset.indices)[0,0].item()
-    print('val_target_indices_last', val_target_indices_last)
-    train_data_numpy = scaled_dataset[:val_target_indices_last]
-    print('train_data_numpy' ,train_data_numpy.shape)
-    not_scaled_data_numpy = dataset.numpy()[:val_target_indices_last].squeeze(1)
+    # debug
+    fine_window_train = torch_dataset.get_window_indices(dm.trainset.indices)[-1,-1].item()
+    fine_horizon_train = torch_dataset.get_horizon_indices(dm.trainset.indices)[-1,-1].item()
+    inizio_horizon_vali = torch_dataset.get_horizon_indices(dm.valset.indices)[0,0].item()
+    inizio_window_vali = torch_dataset.get_window_indices(dm.valset.indices)[0,0].item()
+    print((inizio_horizon_vali-fine_horizon_train) == 1)
+    fine_window_vali = torch_dataset.get_window_indices(dm.valset.indices)[-1,-1].item()
+    fine_horizon_vali = torch_dataset.get_horizon_indices(dm.valset.indices)[-1,-1].item()
+    inizio_window_test = torch_dataset.get_window_indices(dm.testset.indices)[0,0].item()
+    fine_window_test = torch_dataset.get_window_indices(dm.testset.indices)[-1,-1].item()
 
-    train_data_numpy = train_data_numpy.squeeze(1)
+
+    # the model is fitted with the data to the last index of the validation set (of the horizon)
+    train_target_indices_last = torch_dataset.get_horizon_indices(dm.valset.indices)[0,0].item()
+    val_target_indices_last = torch_dataset.get_horizon_indices(dm.testset.indices)[0,0].item()
+
+    print('val_target_indices_last', val_target_indices_last)
+    train_data_numpy = scaled_dataset[:train_target_indices_last].squeeze(1)
+    val_data_numpy = scaled_dataset[train_target_indices_last:val_target_indices_last].squeeze(1)
+    print('train_data_numpy' ,train_data_numpy.shape)
+
     y_true_last = torch_dataset.get_horizon_indices(dm.testset.indices)[-1,-1].item()
     y_true = scaled_dataset[val_target_indices_last:y_true_last+1].squeeze(1)
     test_length = (y_true_last - (val_target_indices_last))
+    val_length = (val_target_indices_last - train_target_indices_last)
     print('y_true', y_true.shape)
     
     # print('last window val', torch_dataset.get_window_indices(dm.valset.indices)[-1,0], '-->', torch_dataset.get_window_indices(dm.valset.indices)[-1,-1])
@@ -162,7 +189,6 @@ def run_traffic(cfg: DictConfig):
 
 
     n_series = train_data_numpy.shape[1]
-    n_samples = train_data_numpy.shape[0]
     
     results_list = []
     
@@ -172,22 +198,29 @@ def run_traffic(cfg: DictConfig):
 
 
     if cfg.bool_mov_avg:
-        moving_average = stats_moving_average(input_array=train_data_numpy, kernel_size=cfg.mov_avg_window, stride=cfg.mov_avg_stride)
-        print('moving_average', moving_average.shape)
-        residuals = train_data_numpy - moving_average
+        moving_average_train = stats_moving_average(input_array=train_data_numpy, kernel_size=cfg.mov_avg_window, stride=cfg.mov_avg_stride)
+        moving_average_val = stats_moving_average(input_array=val_data_numpy, kernel_size=cfg.mov_avg_window, stride=cfg.mov_avg_stride)
         y_true_m = stats_moving_average(input_array=y_true, kernel_size=cfg.mov_avg_window, stride=cfg.mov_avg_stride)
+        
+        residuals_train = train_data_numpy - moving_average_train
+        residuals_val = val_data_numpy - moving_average_val
         y_true_r = y_true - y_true_m
 
-        
+    
+
 
     for j in range(n_series):
         print('j', j)
         # fit one model per each time series independently on the training data
 
         if cfg.bool_mov_avg:
-            input_ts_r = residuals[:, j]
-            input_ts_m = moving_average[:, j]
+            input_ts_r = residuals_train[:, j]
+            input_ts_m = moving_average_train[:, j]
+            input_ts_r_val = residuals_val[:, j]
+            input_ts_m_val = moving_average_val[:, j]
+
             model_r = get_model_class(cfg.model.name, cfg)
+            
             model.fit(input_ts_m)
             model_r.fit(input_ts_r)
 
@@ -248,22 +281,32 @@ def run_traffic(cfg: DictConfig):
     
     print('result_all_ts', results_array.shape, 'y_true', y_true.shape)
     
-    
 
     # Inverse scaling of the predictions and the true values
-    results_array = scaler.inverse_transform(results_array)
-    y_true = scaler.inverse_transform(y_true)
-    print('result_all_ts', results_array.shape, 'y_true', y_true.shape, 'not_scaled_data_numpy', not_scaled_data_numpy.shape)
+    #TODO put the inverse scaling in the metrics
+    # results_array = scaler.inverse_transform(results_array)
+    # y_true = scaler.inverse_transform(y_true)
+    print('result_all_ts', results_array.shape, 'y_true', y_true.shape)
+    # divide results in validation and test
+    results_array_val = results_array[:val_length]
+    results_array_test = results_array[val_length:]
+    val_y_true = y_true[:val_length]
+    test_y_true = y_true[val_length:]
+
     # TODO check features last dimension
     
-    # statsforecast_plot(len_input=500, len_pred=cfg.horizon, input_ts=not_scaled_data_numpy[-500:], y_hat=results_array[0], title=cfg.model.name, y_true=y_true[0])
-
-    res = dict(test_mae=numpy_metrics.mae(results_array, y_true),
-               test_mse=numpy_metrics.mse(results_array, y_true),
-               test_rmse=numpy_metrics.rmse(results_array, y_true),
-               test_mape=numpy_metrics.mape(results_array, y_true),
-               test_mase=numpy_metrics.mase(results_array, y_true),
-               test_maape=numpy_metrics.maape(results_array, y_true)
+    res = dict(val_mae=numpy_metrics.mae(results_array_val, val_y_true),
+               val_mse=numpy_metrics.mse(results_array_val, val_y_true),
+               val_rmse=numpy_metrics.rmse(results_array_val, val_y_true),
+               val_mape=numpy_metrics.mape(results_array_val, val_y_true),
+               val_mase=numpy_metrics.mase(results_array_val, val_y_true),
+               val_maape=numpy_metrics.maape(results_array_val, val_y_true),
+               test_mae=numpy_metrics.mae(results_array_test, test_y_true),
+               test_mse=numpy_metrics.mse(results_array_test, test_y_true),
+               test_rmse=numpy_metrics.rmse(results_array_test, test_y_true),
+               test_mape=numpy_metrics.mape(results_array_test, test_y_true),
+               test_mase=numpy_metrics.mase(results_array_test, test_y_true),
+               test_maape=numpy_metrics.maape(results_array_test, test_y_true)
                 )
     
     

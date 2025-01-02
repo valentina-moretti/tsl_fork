@@ -3,5 +3,5 @@
 lr_scheduler:
   name: ExponentialLR
   hparams:
-    gamma: 1
+    gamma: 1.0
     

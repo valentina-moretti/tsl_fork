@@ -18,7 +18,7 @@ from tsl.data import SpatioTemporalDataModule, SpatioTemporalDataset
 from tsl.data.preprocessing import StandardScaler
 from tsl.datasets import MetrLA, PemsBay
 from tsl.datasets.pems_benchmarks import PeMS03, PeMS04, PeMS07, PeMS08
-from tsl.datasets.ltsf_benchmarks import ETTh1, ETTh2, ETTm1, ETTm2, ETTSplitter 
+from tsl.datasets.ltsf_benchmarks import ETTh1, ETTh2, ETTm1, ETTm2, ETTSplitter, LTSFSplitter, ElectricityDataset
 from tsl.engines import Predictor
 from tsl.experiment import Experiment, NeptuneLogger
 from tsl.metrics import numpy as numpy_metrics
@@ -26,7 +26,9 @@ from tsl.metrics import torch as torch_metrics
 from tsl.utils.casting import torch_to_numpy
 from tsl.utils.stats_moving_average import stats_moving_average
 from sklearn.linear_model import Ridge
-
+import numpy as np
+import random
+import pytorch_lightning as pl
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -52,6 +54,9 @@ def get_dataset(dataset_name, cfg_dataset, drop_first=False):
         dataset = ETTm1(root='../tsl/.storage/ETTh1', drop_first=drop_first, dataset_name=cfg_dataset.name)
     elif dataset_name == 'ettm2':
         dataset = ETTm2(root='../tsl/.storage/ETTh1', drop_first=drop_first, dataset_name=cfg_dataset.name)
+    elif dataset_name == 'electricity':
+        dataset = ElectricityDataset(root='./tsl/.storage/electricity', drop_first=drop_first, dataset_name=cfg_dataset.name)
+
     else:
         raise ValueError(f"Dataset {dataset_name} not available.")
     return dataset
@@ -61,6 +66,13 @@ def run_traffic(cfg: DictConfig):
     ########################################
     # data module                          #
     ########################################
+    pl.seed_everything(cfg.seed)
+    random.seed(cfg.seed)
+    np.random.seed(cfg.seed)
+    torch.manual_seed(cfg.seed)
+    torch.cuda.manual_seed(cfg.seed)
+    torch.cuda.manual_seed_all(cfg.seed)
+
     dataset = get_dataset(cfg.dataset.name, cfg.dataset)
 
     covariates = {'u': dataset.datetime_encoded(['hour', 'day']).values}
@@ -77,7 +89,7 @@ def run_traffic(cfg: DictConfig):
         stride=cfg.stride,
     )
 
-    # transform = {'target': StandardScaler(axis=(0))}  # axis: time&space #TODO put axis=(0, 1) back
+    transform = {'target': StandardScaler(axis=(0))}  # axis: time&space #TODO put axis=(0, 1) back
 
     # TODO togliere il splitter
     if cfg.dataset.name in ['etth1', 'etth2', 'ettm1', 'ettm2']:
@@ -88,7 +100,7 @@ def run_traffic(cfg: DictConfig):
     print('head', torch_dataset.dataframe().head())
     dm = SpatioTemporalDataModule(
         dataset=torch_dataset,
-        # scalers=transform, #TODO
+        scalers=transform, #TODO
         splitter=splitter,
         batch_size=cfg.batch_size,
         workers=cfg.workers,
@@ -96,7 +108,7 @@ def run_traffic(cfg: DictConfig):
     dm.setup()
     
     #TODO
-    # scaler = torch_dataset.scalers['target'].numpy()
+    scaler = torch_dataset.scalers['target'].numpy()
     # scaled_dataset = scaler.transform(dataset.numpy())
 
     # print('torch_dataset', torch_dataset.dataframe().describe())
@@ -120,21 +132,14 @@ def run_traffic(cfg: DictConfig):
     val_window_idx = torch_dataset.get_window_indices(dm.valset.indices)[:,0]
     test_window_idx = torch_dataset.get_window_indices(dm.testset.indices)[:,0]
 
-    train_horizon_idx = torch_dataset.get_horizon_indices(dm.trainset.indices)[:,0]
-    val_horizon_idx = torch_dataset.get_horizon_indices(dm.valset.indices)[:,0]
-    test_horizon_idx = torch_dataset.get_horizon_indices(dm.testset.indices)[:,0]
-
     train_window = torch_dataset[train_window_idx].x.numpy().squeeze(2) 
     val_window = torch_dataset[val_window_idx].x.numpy().squeeze(2)
     test_window = torch_dataset[test_window_idx].x.numpy().squeeze(2)
 
-    train_horizon = torch_dataset[train_window_idx].y.numpy().squeeze(2)
-    val_horizon = torch_dataset[val_window_idx].y.numpy().squeeze(2)
-    test_horizon = torch_dataset[test_window_idx].y.numpy().squeeze(2)
+    train_horizon = scaler.transform(torch_dataset[train_window_idx].y.numpy().squeeze(2))
+    val_horizon = scaler.transform(torch_dataset[val_window_idx].y.numpy().squeeze(2))
+    test_horizon = scaler.transform(torch_dataset[test_window_idx].y.numpy().squeeze(2))
 
-
-    print('train_window', train_window.shape, 'val_window', val_window.shape, 'test_window', test_window.shape)
-    print('train_horizon', train_horizon.shape, 'val_horizon', val_horizon.shape, 'test_horizon', test_horizon.shape)
 
     n_series = test_window.shape[2]
     if cfg.bool_individual == True:

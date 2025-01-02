@@ -193,7 +193,7 @@ class SpatioTemporalDataModule(LightningDataModule):
         return StaticGraphLoader(dataset,
                                  batch_size=batch_size or self.batch_size,
                                  shuffle=shuffle,
-                                 drop_last=split == 'train',
+                                 drop_last= split == 'train',
                                  num_workers=self.workers,
                                  pin_memory=pin_memory)
 

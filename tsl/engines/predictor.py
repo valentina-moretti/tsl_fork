@@ -92,9 +92,11 @@ class Predictor(pl.LightningModule):
 
         if self.model_cls is not None:
             # instantiate model
+            # self.flag = False AGGIUNGO??
             self.model = self.model_cls(**self.model_kwargs)
         else:
             self.model = model
+
 
     def __setattr__(self, key, value):
         super(Predictor, self).__setattr__(key, value)
@@ -385,13 +387,22 @@ class Predictor(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         """"""
         # Compute outputs and rescale
-        y_hat = self.predict_batch(batch, preprocess=False, postprocess=True)
+        y_hat = self.predict_batch(batch, preprocess=False, postprocess=False) #TODO rimetto postprocess=postprocess
 
+        
         y, mask = batch.y, batch.get('mask')
-        test_loss = self.loss_fn(y_hat, y, mask)
+
+        # Scale target and output, eventually
+        #TODO togliere
+        if True:
+            y_loss = batch.transform['y'].transform(y)
+
+
+        test_loss = self.loss_fn(y_hat, y_loss, mask) #TODO rimettere y al posto di y_loss
 
         # Logging
-        self.test_metrics.update(y_hat.detach(), y, mask)
+        self.test_metrics.update(y_hat.detach(), y_loss, mask) #TODO rimettere y al posto di y_loss
+
         self.log_metrics(self.test_metrics, batch_size=batch.batch_size)
         self.log_loss('test', test_loss, batch_size=batch.batch_size)
         return test_loss

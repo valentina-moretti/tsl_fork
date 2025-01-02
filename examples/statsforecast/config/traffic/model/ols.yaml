@@ -2,8 +2,10 @@
 
 #### Model params #############################################################
 model:
-  name: dlinear
+  name: ols
   hparams:
-    kernel_size: 5
-    bool_individual: False #change TODO
-    
+    alpha : 0.00001
+    fit_intercept: True
+    copy_X : True
+    tol : 0.00001
+    solver : 'svd'

@@ -38,7 +38,8 @@ dataset_classes = [
     'ETTh1',
     'ETTh2',
     'ETTm1',
-    'ETTm2'
+    'ETTm2',
+    'ElectricityDataset'
 ]
 
 __all__ = prototype_classes + dataset_classes

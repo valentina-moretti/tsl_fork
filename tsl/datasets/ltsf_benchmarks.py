@@ -315,6 +315,7 @@ class _LTSFDataset(DatetimeDataset):
         # Change columns to multiindex
         
         if not self.bool_multinode:
+            print("Not multinode")
             df.columns = pd.MultiIndex.from_product([['global_node'], df.columns],
                                                     names=['node', 'channel'])
 
@@ -442,7 +443,7 @@ class ETTm2(_LTSFDataset):
 class TrafficDataset(_LTSFDataset):
     url = ('https://drive.google.com/file/d/1U3BZ3Wvuvd9HVAx5Nl3bHYG9rsh5-yZX/view?usp=sharing') #TODO change link
     default_freq = '1h'
-    bool_multinode = True
+    bool_multinode = False
 
     @property
     def raw_file_names(self):
@@ -452,7 +453,7 @@ class TrafficDataset(_LTSFDataset):
 class PemsBayDataset(_LTSFDataset):
     url = None #TODO change link
     default_freq = '5min'
-    bool_multinode = True
+    bool_multinode = False
 
     @property
     def raw_file_names(self):
@@ -461,7 +462,7 @@ class PemsBayDataset(_LTSFDataset):
 class MetrLaDataset(_LTSFDataset):
     url = None #TODO change link
     default_freq = '5min'
-    bool_multinode = True
+    bool_multinode = False
 
     @property
     def raw_file_names(self):
@@ -470,16 +471,16 @@ class MetrLaDataset(_LTSFDataset):
 class M4Dataset(_LTSFDataset):
     url = ('https://drive.google.com/file/d/1U3BZ3Wvuvd9HVAx5Nl3bHYG9rsh5-yZX/view?usp=sharing') #TODO change link
     default_freq = '1h'
-    bool_multinode = True
+    bool_multinode = False
 
     @property
     def raw_file_names(self):
         return ['m4_hourly_dataset.tsf']
     
 class ElectricityDataset(_LTSFDataset):
-    url = None #('https://drive.google.com/file/d/1U3BZ3Wvuvd9HVAx5Nl3bHYG9rsh5-yZX/view?usp=sharing') #TODO change link
+    url = ('https://drive.google.com/file/d') #TODO change link (this is csv not electricity_hourly_dataset.tsf)
     default_freq = '1h'
-    bool_multinode = True
+    bool_multinode = False
 
     @property
     def raw_file_names(self):
@@ -524,7 +525,7 @@ class Elergone(_LTSFDataset):
     default_spatial_aggregation = 'sum'
     default_freq = '1H'
     start_date = '01-01-2012 00:00'
-    bool_multinode = True
+    bool_multinode = False
 
     @property
     def raw_file_names(self):
@@ -569,3 +570,31 @@ class ETTSplitter(Splitter):
         
         return self.indices
     
+
+
+
+# at timestep splitter
+class LTSFSplitter(Splitter):
+    def __init__(self, dataset_name, seq_len, horizon):
+        self.seq_len = seq_len
+        self.horizon = horizon
+        self.dataset_name = dataset_name
+        super(LTSFSplitter, self).__init__()
+
+    def fit(self, dataset: _LTSFDataset) -> dict:
+        
+        idx = np.arange(len(dataset))
+        len_dataset = len(dataset)
+        test_len = int(0.2 * len(idx))
+        train_len = int(0.7 * len(idx))
+        
+        val_len = len_dataset - train_len - test_len
+        test_start = len(idx) - test_len
+        val_end = train_len + val_len
+        self.set_indices(idx[:train_len - self.seq_len - self.horizon],
+                         idx[train_len:val_end - self.seq_len - self.horizon],
+                         idx[val_end:])
+
+        return self.indices
+    
+

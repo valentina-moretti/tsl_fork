@@ -7,7 +7,7 @@ from tsl.data import Splitter, Data
 from tsl.datasets.prototypes import DatetimeDataset
 from tsl.utils import download_url
 from tsl.data.preprocessing import ScalerModule
-from tsl.data import AtTimeStepSplitter
+from tsl.data.datamodule import AtTimeStepSplitter
 
 # MONASH
 from datetime import datetime

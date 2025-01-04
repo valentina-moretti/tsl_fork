@@ -18,24 +18,28 @@ hydra:
   mode: MULTIRUN
   sweeper:
     direction: minimize  # minimize if loss is MSE
-    n_trials: 100
+    n_trials: 40
     n_jobs: 1
     storage: null
     params:
       # Constant params
-      window: 32
-      optimizer.hparams.lr: 0.0005
+      window: 48, 96
+      optimizer.hparams.lr: 0.0001, 0.0005
       dataset: electricity
       model: rnn
       lr_scheduler: exp
-      lr_scheduler.hparams.gamma: 0.99
-      model.hparams.hidden_size: 16
+      lr_scheduler.hparams.gamma: 0.99, 1.0
+      model.hparams.hidden_size: 32, 64, 128
       model.hparams.rec_layers: 1, 2, 4
       # model.hparams.n_layers: 1
       # model.hparams.n_heads: 1
-      # model.hparams.ff_size: 16
+      model.hparams.ff_size: 16, 32, 64
       # model.hparams.kernel_size: 7, 15, 31
+      train_batches: 1.0
+      axis: 1
+      bool_iid_dataset: False
 
+      
       
       
 

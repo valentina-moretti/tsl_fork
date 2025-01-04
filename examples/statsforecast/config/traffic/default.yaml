@@ -1,8 +1,8 @@
 defaults:
   - _self_
   - logger: null
-  - dataset: etth1
-  - model: arima
+  - dataset: electricity
+  - model: ols
 
 #### Experiment params ########################################################
 hydra:
@@ -24,8 +24,8 @@ num_threads: 1  # limit the number of pytorch threads spawn
 logger: null
 
 #### Windowing params #########################################################
-window: 96
-horizon: 1
+window: 720
+horizon: 96
 stride: 1
 
 #### Training params ##########################################################
@@ -46,7 +46,8 @@ lr_scheduler: null
 
 bool_mov_avg: False
 
-mov_avg_window: 3
+mov_avg_window: 17
 mov_avg_stride: 1
 
 bool_exog: False
+bool_individual: False

@@ -337,6 +337,7 @@ class Predictor(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         """"""
         y = y_loss = batch.y
+        batch_size = batch.size(0)
         mask = batch.get('mask')
 
         # Compute predictions and compute loss
@@ -355,14 +356,15 @@ class Predictor(pl.LightningModule):
 
         # Logging
         self.train_metrics.update(y_hat, y, mask)
-        self.log_metrics(self.train_metrics, batch_size=batch.batch_size)
-        self.log_loss('train', loss, batch_size=batch.batch_size)
+        self.log_metrics(self.train_metrics, batch_size=batch_size)
+        self.log_loss('train', loss, batch_size=batch_size)
         return loss
 
     def validation_step(self, batch, batch_idx):
         """"""
         y = y_loss = batch.y
         mask = batch.get('mask')
+        batch_size = batch.size(0)
 
         # Compute predictions
         y_hat_loss = self.predict_batch(batch,
@@ -380,15 +382,15 @@ class Predictor(pl.LightningModule):
 
         # Logging
         self.val_metrics.update(y_hat, y, mask)
-        self.log_metrics(self.val_metrics, batch_size=batch.batch_size)
-        self.log_loss('val', val_loss, batch_size=batch.batch_size)
+        self.log_metrics(self.val_metrics, batch_size=batch_size)
+        self.log_loss('val', val_loss, batch_size=batch_size)
         return val_loss
 
     def test_step(self, batch, batch_idx):
         """"""
         # Compute outputs and rescale
         y_hat = self.predict_batch(batch, preprocess=False, postprocess=False) #TODO rimetto postprocess=postprocess
-
+        batch_size = batch.size(0)
         
         y, mask = batch.y, batch.get('mask')
 
@@ -403,8 +405,8 @@ class Predictor(pl.LightningModule):
         # Logging
         self.test_metrics.update(y_hat.detach(), y_loss, mask) #TODO rimettere y al posto di y_loss
 
-        self.log_metrics(self.test_metrics, batch_size=batch.batch_size)
-        self.log_loss('test', test_loss, batch_size=batch.batch_size)
+        self.log_metrics(self.test_metrics, batch_size=batch_size)
+        self.log_loss('test', test_loss, batch_size=batch_size)
         return test_loss
 
     def compute_metrics(self, batch, preprocess=False, postprocess=True):

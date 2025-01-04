@@ -1,7 +1,7 @@
 from .batch import DisjointBatch, StaticBatch, static_graph_collate
 from .batch_map import BatchMap, BatchMapItem
 from .data import Data
-from .datamodule import *
+from .datamodule import Splitter
 from .imputation_dataset import ImputationDataset
 from .spatiotemporal_dataset import SpatioTemporalDataset
 from .synch_mode import HORIZON, STATIC, WINDOW, SynchMode

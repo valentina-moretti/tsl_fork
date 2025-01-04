@@ -5,15 +5,8 @@ from omegaconf import DictConfig
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import Logger, TensorBoardLogger, WandbLogger
-from tsl.datasets.ltsf_benchmarks import ETTh1, ETTh2, ETTm1, ETTm2, ETTSplitter, ElectricityDataset
 from tsl.utils.plot import numpy_plot
 from tsl import logger
-from tsl.data import SpatioTemporalDataModule, SpatioTemporalDataset
-from tsl.data.preprocessing import StandardScaler
-from tsl.datasets import MetrLA, PemsBay
-from tsl.datasets.pems_benchmarks import PeMS03, PeMS04, PeMS07, PeMS08
-from tsl.engines import Predictor
-from tsl.experiment import Experiment, NeptuneLogger
 from tsl.metrics import numpy as numpy_metrics
 from tsl.metrics import torch as torch_metrics
 from tsl.nn import models
@@ -23,7 +16,15 @@ import pytorch_lightning as pl
 import numpy as np
 import gc
 import urllib3
-
+from tsl.engines import Predictor
+from tsl.experiment import Experiment, NeptuneLogger
+from tsl.datasets.prototypes.iid_dataset import IIDDataset
+from tsl.data import SpatioTemporalDataset
+from tsl.data.preprocessing import StandardScaler
+from tsl.datasets import MetrLA, PemsBay
+from tsl.datasets.pems_benchmarks import PeMS03, PeMS04, PeMS07, PeMS08
+from tsl.data.datamodule import SpatioTemporalDataModule
+from tsl.datasets.ltsf_benchmarks import ETTh1, ETTh2, ETTm1, ETTm2, ETTSplitter, ElectricityDataset
 
 def get_model_class(model_str):
     # Spatiotemporal Models ###################################################
@@ -138,6 +139,7 @@ def run_traffic(cfg: DictConfig):
 
     dataset = get_dataset(dataset_name=cfg.dataset.name, cfg_dataset=cfg.dataset)
 
+    bool_iid_dataset = cfg.bool_iid_dataset
     # encode time of the day and use it as exogenous variable
     covariates = {'u': dataset.datetime_encoded(['hour', 'day']).values}
 
@@ -145,17 +147,33 @@ def run_traffic(cfg: DictConfig):
     adj = None
     # adj = dataset.get_connectivity(**cfg.dataset.connectivity)
 
-    torch_dataset = SpatioTemporalDataset(
-        target=dataset.dataframe(),
-        mask=dataset.mask,
-        connectivity=adj,
-        covariates=covariates,
-        horizon=cfg.horizon,
-        window=cfg.window,
-        stride=cfg.stride,
-    )
+    if cfg.bool_iid_dataset:
+        torch_dataset = IIDDataset(
+            target=dataset.dataframe(),
+            mask=dataset.mask,
+            connectivity=adj,
+            covariates=covariates,
+            horizon=cfg.horizon,
+            window=cfg.window,
+            stride=cfg.stride,
+        )
+        torch_dataset.set_batch_size(cfg.batch_size)
+        torch_dataset.set_axis(cfg.axis)
+    else:
+        torch_dataset = SpatioTemporalDataset(
+            target=dataset.dataframe(),
+            mask=dataset.mask,
+            connectivity=adj,
+            covariates=covariates,
+            horizon=cfg.horizon,
+            window=cfg.window,
+            stride=cfg.stride,
+        )
 
-    # transform = {'target': StandardScaler(axis=(0))}  # axis: time&space #TODO rimettere axis=(0, 1), ho messo solo 0 perchè lo fa toner
+    if cfg.axis:
+        transform = {'target': StandardScaler(axis=(0))} 
+    else:
+        transform = {'target': StandardScaler(axis=(0,1))}  # axis: time&space #TODO rimettere axis=(0, 1), ho messo solo 0 perchè lo fa toner
 
     # TODO togliere splitter
     if cfg.dataset.name in ['etth1', 'etth2', 'ettm1', 'ettm2']:
@@ -165,10 +183,11 @@ def run_traffic(cfg: DictConfig):
     
     dm = SpatioTemporalDataModule(
         dataset=torch_dataset,
-        # scalers=transform,
+        scalers=transform,
         splitter=splitter,
         batch_size=cfg.batch_size,
         workers=cfg.workers,
+        bool_iid_dataset=bool_iid_dataset
     )
     dm.setup()
 
@@ -249,6 +268,7 @@ def run_traffic(cfg: DictConfig):
         gradient_clip_val=cfg.grad_clip_val,
         callbacks=[early_stop_callback, checkpoint_callback],
         log_every_n_steps=100, #100,
+        limit_train_batches=cfg.train_batches,
     )
     trainer.fit(predictor, datamodule=dm)
     
@@ -269,8 +289,13 @@ def run_traffic(cfg: DictConfig):
         
     y_hat, y_true, mask = (output['y_hat'], output['y'],
                         output.get('mask', None))
+    scaler = torch_dataset.scalers['target'].numpy()
+    
+    y_hat = scaler.transform(y_hat)
+    y_true = scaler.transform(y_true)
     
     res = dict(test_mae=numpy_metrics.mae(y_hat, y_true, mask),
+            test_mse=numpy_metrics.mse(y_hat, y_true, mask),
             test_rmse=numpy_metrics.rmse(y_hat, y_true, mask),
             test_mape=numpy_metrics.mape(y_hat, y_true, mask),
             test_mase=numpy_metrics.mase(y_hat, y_true, mask),

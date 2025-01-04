@@ -2,13 +2,13 @@ from typing import Literal, Mapping, Optional
 
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset, Subset
-
 import tsl
 
 from ...typing import Index
 from ..loader import StaticGraphLoader
 from ..spatiotemporal_dataset import SpatioTemporalDataset
 from .splitters import Splitter
+from ..loader.iid_loader import IIDLoader
 
 StageOptions = Literal['fit', 'validate', 'test', 'predict']
 
@@ -49,12 +49,14 @@ class SpatioTemporalDataModule(LightningDataModule):
                  splitter: Optional[Splitter] = None,
                  batch_size: int = 32,
                  workers: int = 0,
-                 pin_memory: bool = False):
+                 pin_memory: bool = False,
+                 bool_iid_dataset: bool = False):
         super(SpatioTemporalDataModule, self).__init__()
         self.torch_dataset = dataset
         # splitting
         self.splitter = splitter
         self.trainset = self.valset = self.testset = None
+        self.bool_iid_dataset = bool_iid_dataset
         # scaling
         if scalers is None:
             self.scalers = dict()
@@ -190,6 +192,28 @@ class SpatioTemporalDataModule(LightningDataModule):
         if dataset is None:
             return None
         pin_memory = self.pin_memory if split == 'train' else None
+        
+        if self.bool_iid_dataset and split == 'train':
+            
+            print(dataset, 'dataset')
+            dataset.dataset.set_batch_size(self.batch_size)
+            print("batch_size", self.batch_size)
+            len_dataset = len(dataset)
+            print('len_dataset', len_dataset)
+            num_nodes = dataset.dataset.n_nodes
+            print('num_nodes', num_nodes)
+            num_batches = len_dataset * num_nodes // self.batch_size
+            print('num_batches', num_batches)
+            dataset.dataset.batch_size = self.batch_size
+            dataset.dataset.make_random_iid(self.batch_size)
+            print('num_batches', num_batches)
+            return IIDLoader(dataset = dataset.dataset,
+                            batch_size=int(batch_size or self.batch_size),
+                            num_batches=int(num_batches*1),
+                            num_workers=self.workers,
+                            drop_last=True,
+                            pin_memory=pin_memory)
+        
         return StaticGraphLoader(dataset,
                                  batch_size=batch_size or self.batch_size,
                                  shuffle=shuffle,

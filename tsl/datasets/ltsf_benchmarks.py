@@ -480,7 +480,7 @@ class M4Dataset(_LTSFDataset):
 class ElectricityDataset(_LTSFDataset):
     url = ('https://drive.google.com/file/d') #TODO change link (this is csv not electricity_hourly_dataset.tsf)
     default_freq = '1h'
-    bool_multinode = False
+    bool_multinode = True
 
     @property
     def raw_file_names(self):

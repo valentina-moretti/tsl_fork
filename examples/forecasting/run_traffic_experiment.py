@@ -65,6 +65,8 @@ def get_model_class(model_str):
         model = models.FCRNNModel
     elif model_str == 'tcn':
         model = models.TCNModel
+    elif model_str == 'multivrnn':
+        model = models.MultivRNNModel
     else:
         raise NotImplementedError(f'Model "{model_str}" not available.')
     return model
@@ -141,7 +143,8 @@ def run_traffic(cfg: DictConfig):
 
     bool_iid_dataset = cfg.bool_iid_dataset
     # encode time of the day and use it as exogenous variable
-    covariates = {'u': dataset.datetime_encoded(['hour', 'day']).values}
+    # covariates = {'u': dataset.datetime_encoded(['hour', 'day']).values}
+    covariates = None
 
     # get adjacency matrix
     adj = None
@@ -202,7 +205,7 @@ def run_traffic(cfg: DictConfig):
                         output_size=torch_dataset.n_channels,
                         horizon=torch_dataset.horizon,
                         window=torch_dataset.window,
-                        exog_size=torch_dataset.input_map.u.shape[-1])
+                        exog_size= None if covariates is None else torch_dataset.input_map.u.shape[-1])
 
     model_cls.filter_model_args_(model_kwargs)
     model_kwargs.update(cfg.model.hparams)

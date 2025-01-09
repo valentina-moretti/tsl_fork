@@ -2,7 +2,7 @@
 
 #### Model params #############################################################
 model:
-  name: rnn
+  name: multivrnn
   hparams:
     hidden_size: 128
     ff_size: 64
@@ -11,4 +11,3 @@ model:
     rec_dropout: 0.1
     ff_dropout: 0.1
     cell_type: gru
-

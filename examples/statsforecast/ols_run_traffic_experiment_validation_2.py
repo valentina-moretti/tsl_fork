@@ -2,6 +2,7 @@ from typing import Optional
 
 import torch
 from omegaconf import DictConfig
+from einops import rearrange
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import Logger, TensorBoardLogger, WandbLogger
@@ -14,7 +15,8 @@ from tsl.utils.plot import statsforecast_plot
 import pandas as pd
 from statsforecast import StatsForecast
 from tsl import logger
-from tsl.data import SpatioTemporalDataModule, SpatioTemporalDataset
+from tsl.data.datamodule import SpatioTemporalDataModule
+from tsl.data import SpatioTemporalDataset
 from tsl.data.preprocessing import StandardScaler
 from tsl.datasets import MetrLA, PemsBay
 from tsl.datasets.pems_benchmarks import PeMS03, PeMS04, PeMS07, PeMS08
@@ -63,9 +65,7 @@ def get_dataset(dataset_name, cfg_dataset, drop_first=False):
 
 
 def run_traffic(cfg: DictConfig):
-    ########################################
-    # data module                          #
-    ########################################
+    
     pl.seed_everything(cfg.seed)
     random.seed(cfg.seed)
     np.random.seed(cfg.seed)
@@ -91,7 +91,7 @@ def run_traffic(cfg: DictConfig):
 
     transform = {'target': StandardScaler(axis=(0))}  # axis: time&space #TODO put axis=(0, 1) back
 
-    # TODO togliere il splitter
+
     if cfg.dataset.name in ['etth1', 'etth2', 'ettm1', 'ettm2']:
         splitter = ETTSplitter(dataset_name=cfg.dataset.name, seq_len=cfg.window, horizon=cfg.horizon)
     else:
@@ -100,26 +100,16 @@ def run_traffic(cfg: DictConfig):
     print('head', torch_dataset.dataframe().head())
     dm = SpatioTemporalDataModule(
         dataset=torch_dataset,
-        scalers=transform, #TODO
+        scalers=transform,
         splitter=splitter,
         batch_size=cfg.batch_size,
         workers=cfg.workers,
     )
     dm.setup()
     
-    #TODO
+    
     scaler = torch_dataset.scalers['target'].numpy()
-    # scaled_dataset = scaler.transform(dataset.numpy())
-
-    # print('torch_dataset', torch_dataset.dataframe().describe())
-
-    # from numpy.ndarray to dataframe
-    # scaled_dataset_df = pd.DataFrame(scaled_dataset.reshape(-1, scaled_dataset.shape[-1]))
-    # print('scaled_dataset_df', scaled_dataset_df.describe())
-
-    ########################################
-    # predictor                            #
-    ########################################
+    
 
     model = Ridge(alpha=cfg.model.hparams.alpha,
                     fit_intercept=cfg.model.hparams.fit_intercept,
@@ -131,14 +121,20 @@ def run_traffic(cfg: DictConfig):
     train_window_idx = torch_dataset.get_window_indices(dm.trainset.indices)[:,0]
     val_window_idx = torch_dataset.get_window_indices(dm.valset.indices)[:,0]
     test_window_idx = torch_dataset.get_window_indices(dm.testset.indices)[:,0]
+    
+    if torch_dataset[train_window_idx].x.numpy().shape[2] == 1:
+        squeeze_axis = 2
+    else:
+        squeeze_axis = 3
+        
+    train_window = torch_dataset[train_window_idx].x.numpy().squeeze(squeeze_axis) 
+    val_window = torch_dataset[val_window_idx].x.numpy().squeeze(squeeze_axis)
+    test_window = torch_dataset[test_window_idx].x.numpy().squeeze(squeeze_axis)
+    
+    train_horizon = scaler.transform(torch_dataset[train_window_idx].y.numpy()).squeeze(squeeze_axis)
+    val_horizon = scaler.transform(torch_dataset[val_window_idx].y.numpy()).squeeze(squeeze_axis)
+    test_horizon = scaler.transform(torch_dataset[test_window_idx].y.numpy()).squeeze(squeeze_axis)
 
-    train_window = torch_dataset[train_window_idx].x.numpy().squeeze(2) 
-    val_window = torch_dataset[val_window_idx].x.numpy().squeeze(2)
-    test_window = torch_dataset[test_window_idx].x.numpy().squeeze(2)
-
-    train_horizon = scaler.transform(torch_dataset[train_window_idx].y.numpy().squeeze(2))
-    val_horizon = scaler.transform(torch_dataset[val_window_idx].y.numpy().squeeze(2))
-    test_horizon = scaler.transform(torch_dataset[test_window_idx].y.numpy().squeeze(2))
 
 
     n_series = test_window.shape[2]
@@ -165,31 +161,35 @@ def run_traffic(cfg: DictConfig):
         test_results_array = np.stack(test_results_list, axis=2)
 
     else:
-        train_window = train_window.transpose(0, 2, 1)
-        train_horizon = train_horizon.transpose(0, 2, 1)
-        x_fit = train_window.reshape(-1, train_window.shape[-1])
-        y_fit = train_horizon.reshape(-1, train_horizon.shape[-1])
+        x_fit = rearrange(train_window, 'b t f -> (b f) t')
+        y_fit = rearrange(train_horizon, 'b t f -> (b f) t')
         model.fit(X=x_fit, y=y_fit)
 
-        val_window = val_window.transpose(0, 2, 1) #PERCHè NON FUNZIONA SE NON FACCIO QUESTO?
-        test_window = test_window.transpose(0, 2, 1)
-        x_pred_val = val_window.reshape(-1, val_window.shape[-1])
-        x_pred_test = test_window.reshape(-1, test_window.shape[-1])
-        val_result_array = model.predict(x_pred_val).reshape(val_window.shape[0], val_window.shape[1], cfg.horizon)
-        test_results_array = model.predict(x_pred_test).reshape(test_window.shape[0], test_window.shape[1], cfg.horizon)
-        test_horizon = test_horizon.transpose(0, 2, 1)
-        val_horizon = val_horizon.transpose(0, 2, 1)
+        x_pred_val = rearrange(val_window, 'b t f -> (b f) t')
+        x_pred_test = rearrange(test_window, 'b t f -> (b f) t')
+        val_result_array = model.predict(x_pred_val)
+        test_results_array = model.predict(x_pred_test)
         
-        # x_fit = train_window.reshape(-1, train_window.shape[1])
-        # y_fit = train_horizon.reshape(-1, train_horizon.shape[1])
-        # model.fit(X=x_fit, y=y_fit)
+        val_result_array = rearrange(val_result_array, '(b f) h -> b h f', f=n_series, h=cfg.horizon)
+        test_results_array = rearrange(test_results_array, '(b f) h -> b h f', f=n_series, h=cfg.horizon)
 
-        # x_pred_val = val_window.reshape(-1, val_window.shape[1])
-        # x_pred_test = test_window.reshape(-1, test_window.shape[1])
-        # val_result_array = model.predict(x_pred_val).reshape(val_window.shape[0], val_window.shape[2], cfg.horizon)
-        # test_results_array = model.predict(x_pred_test).reshape(test_window.shape[0], test_window.shape[2], cfg.horizon)
+
+        # working alternative
+        # train_window = train_window.transpose(0, 2, 1)
+        # train_horizon = train_horizon.transpose(0, 2, 1)
+        # x_fit = train_window.reshape(-1, train_window.shape[-1])
+        # y_fit = train_horizon.reshape(-1, train_horizon.shape[-1])
+        # model.fit(X=x_fit, y=y_fit)
+        # val_window = val_window.transpose(0, 2, 1)
+        # test_window = test_window.transpose(0, 2, 1)
+        # x_pred_val = val_window.reshape(-1, val_window.shape[-1])
+        # x_pred_test = test_window.reshape(-1, test_window.shape[-1])
+        # val_result_array = model.predict(x_pred_val).reshape(val_window.shape[0], val_window.shape[1], cfg.horizon)
+        # test_results_array = model.predict(x_pred_test).reshape(test_window.shape[0], test_window.shape[1], cfg.horizon)
         # test_horizon = test_horizon.transpose(0, 2, 1)
         # val_horizon = val_horizon.transpose(0, 2, 1)
+
+        
 
     print('test_results_array', test_results_array.shape, 'test_horizon', test_horizon.shape)
     print('val_result_array', val_result_array.shape, 'val_horizon', val_horizon.shape)
@@ -201,15 +201,6 @@ def run_traffic(cfg: DictConfig):
     # val_horizon = scaler.inverse_transform(val_true_array)
     # test_true_array = scaler.inverse_transform(test_true_array)
 
-    
-    # t_test_horizon = scaler.transform(test_horizon)
-    # t_test_res = scaler.transform(test_results_array)
-    # print('mse', numpy_metrics.mse(t_test_res, t_test_horizon),
-    #       'mae', numpy_metrics.mae(t_test_res, t_test_horizon),
-    #         'rmse', numpy_metrics.rmse(t_test_res, t_test_horizon),
-    #         'mape', numpy_metrics.mape(t_test_res, t_test_horizon),
-    #         'mase', numpy_metrics.mase(t_test_res, t_test_horizon),
-    #         'maape', numpy_metrics.maape(t_test_res, t_test_horizon))
     
     print(f'MSE={np.mean((test_horizon-test_results_array)**2):0.3f}; MAE={np.mean(np.abs(test_horizon-test_results_array)):0.3f}.')
     print('\n--------------------- Results ---------------------\n')
@@ -226,9 +217,6 @@ def run_traffic(cfg: DictConfig):
                 test_mase=numpy_metrics.mase(test_results_array, test_horizon),
                 test_maape=numpy_metrics.maape(test_results_array, test_horizon)
                 )
-
-    
-    # numpy_plot(len_pred=cfg.horizon, y_hat=np.expand_dims(test_results_array, axis=2), title='OLS Dlinear', y_true=np.expand_dims(test_horizon, axis=2))
     
     return res
 

@@ -54,7 +54,7 @@ class RNNModel(BaseModel):
         else:
             self.input_encoder = nn.Sequential(
                 nn.Linear(input_size, hidden_size), nn.ReLU())
-
+            
         self.rnn = RNN(input_size=hidden_size,
                        hidden_size=hidden_size,
                        n_layers=rec_layers,
@@ -80,10 +80,64 @@ class RNNModel(BaseModel):
             x = self.input_encoder(x, u)
         else:
             x = self.input_encoder(x)
-
         x = self.rnn(x)
 
         return self.readout(x)
+
+
+class MultivRNNModel(RNNModel):
+    
+    return_type = Tensor
+
+    def __init__(self,
+                 input_size: int,
+                 output_size: int,
+                 n_nodes: int,
+                 horizon: int,
+                 exog_size: int = 0,
+                 hidden_size: int = 32,
+                 ff_size: int = 64,
+                 rec_layers: int = 1,
+                 ff_layers: int = 1,
+                 rec_dropout: float = 0.,
+                 ff_dropout: float = 0.,
+                 cell_type: str = 'gru',
+                 activation: str = 'relu'):
+        super(MultivRNNModel, self).__init__(
+            input_size=input_size*n_nodes,  
+            output_size=output_size*n_nodes,
+            horizon=horizon, 
+            exog_size=exog_size,
+            hidden_size=hidden_size,
+            ff_size=ff_size,
+            rec_layers=rec_layers,
+            ff_layers=ff_layers,
+            rec_dropout=rec_dropout,
+            ff_dropout=ff_dropout,
+            cell_type=cell_type,
+            activation=activation
+        )
+        self.n_nodes = n_nodes
+
+        
+    def forward(self, x: Tensor, u: Optional[Tensor] = None) -> Tensor:
+        """"""
+        # x: [batches steps nodes features]
+        # u: [batches steps (nodes) features]
+        n = self.n_nodes
+        x = rearrange(x, 'b t n f -> b t 1 (n f)')
+
+        if u is not None:
+            if u.dim() == 3:
+                u = rearrange(u, 'b t f -> b t 1 f')
+            x = self.input_encoder(x, u)
+        else:
+            x = self.input_encoder(x)
+
+        x = self.rnn(x)
+        x_out = self.readout(x)
+        x_out = rearrange(x_out, 'b h 1 (n f) -> b h n f', n=n)
+        return x_out
 
 
 class FCRNNModel(RNNModel):

@@ -402,7 +402,7 @@ class ETTh1(_LTSFDataset):
     url = ('https://raw.githubusercontent.com/zhouhaoyi/ETDataset/'
            'main/ETT-small/ETTh1.csv')
     default_freq = '1h'
-    bool_multinode = False
+    bool_multinode = True
 
     @property
     def raw_file_names(self):
@@ -413,7 +413,7 @@ class ETTh2(_LTSFDataset):
     url = ('https://raw.githubusercontent.com/zhouhaoyi/ETDataset/'
            'main/ETT-small/ETTh2.csv')
     default_freq = '1h'
-    bool_multinode = False
+    bool_multinode = True
 
     @property
     def raw_file_names(self):
@@ -424,7 +424,7 @@ class ETTm1(_LTSFDataset):
     url = ('https://raw.githubusercontent.com/zhouhaoyi/ETDataset/'
            'main/ETT-small/ETTm1.csv')
     default_freq = '15min'
-    bool_multinode = False
+    bool_multinode = True
 
     @property
     def raw_file_names(self):
@@ -434,7 +434,7 @@ class ETTm1(_LTSFDataset):
 class ETTm2(_LTSFDataset):
     url = ('https://raw.githubusercontent.com/zhouhaoyi/ETDataset/main/ETT-small/ETTm2.csv')
     default_freq = '15min'
-    bool_multinode = False
+    bool_multinode = True
 
     @property
     def raw_file_names(self):

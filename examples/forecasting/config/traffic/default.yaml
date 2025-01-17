@@ -14,7 +14,7 @@ hydra:
     dir: logs/${now:%Y-%m-%d-%H-%M-%S}
     subdir: ${model.name}/${dataset.name}/${hydra.job.num}
 
-seed: 114  # automatically set everywhere the seed
+seed: 2021  # automatically set everywhere the seed
 tags:
   - ${model.name}
   - ${dataset.name}
@@ -29,12 +29,10 @@ horizon: 96
 stride: 1
 
 #### Training params ##########################################################
-epochs: 50
-patience: 20
+epochs: 100
+patience: 5
 batch_size: 16
 grad_clip_val: 5
-scale_target: False
 bool_iid_dataset: False
 train_batches: 1.0
 axis: 0
-bool_multivariate: False

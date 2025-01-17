@@ -25,6 +25,9 @@ from tsl.datasets import MetrLA, PemsBay
 from tsl.datasets.pems_benchmarks import PeMS03, PeMS04, PeMS07, PeMS08
 from tsl.data.datamodule import SpatioTemporalDataModule
 from tsl.datasets.ltsf_benchmarks import ETTh1, ETTh2, ETTm1, ETTm2, ETTSplitter, ElectricityDataset
+from tsl.data.batch_map import BatchMapItem
+from tsl.utils.timefeatures import time_features
+# from tsl.utils import plot_lr_scheduler
 
 def get_model_class(model_str):
     # Spatiotemporal Models ###################################################
@@ -65,8 +68,12 @@ def get_model_class(model_str):
         model = models.FCRNNModel
     elif model_str == 'tcn':
         model = models.TCNModel
-    elif model_str == 'multivrnn':
-        model = models.MultivRNNModel
+    elif model_str == 'fctransformer':
+        model = models.FCTransformerModel
+    elif model_str == 'informer':
+        model = models.InformerModel
+    elif model_str == 'fcinformer':
+        model = models.FCInformerModel
     else:
         raise NotImplementedError(f'Model "{model_str}" not available.')
     return model
@@ -144,7 +151,18 @@ def run_traffic(cfg: DictConfig):
     bool_iid_dataset = cfg.bool_iid_dataset
     # encode time of the day and use it as exogenous variable
     # covariates = {'u': dataset.datetime_encoded(['hour', 'day']).values}
-    covariates = None
+    if 'informer' in cfg.model.name:
+        # datetime_idx is the sparse datetime_onehot encoding of the datetime, 
+        # so instead of using the canonical onehot encoding (only one 1 in the row, eg. we need 24 columns for hours), 
+        # we use the sparse onehot encoding (only 1 column for hours, with 24 values). 
+        # In this way, we have 3 columns in total, one for the minute, one for the hour, and one for the day.
+        # On the other hand, datetime_encoded produces two columns for each feature, one for the sin and one for the cos. 
+        # So, in this case, we would have have 6 columns in total.
+        # covariates = {'x_mark': dataset.datetime_idx(['month', 'day', 'weekday', 'hour']).values}
+        timefeatures = time_features(dataset.dataframe().index, timeenc=1, freq='h')
+        covariates = {'x_mark': timefeatures}
+    else:
+        covariates = None
 
     # get adjacency matrix
     adj = None
@@ -173,6 +191,13 @@ def run_traffic(cfg: DictConfig):
             stride=cfg.stride,
         )
 
+    
+    if 'informer' in cfg.model.name:
+        # future_covariate = BatchMapItem( synch_mode= 'horizon', 
+        #                                 pattern = 't f', t = 'time', f = 'feature')
+        # torch_dataset.update_input_map('x_mark', future_covariate)
+        torch_dataset.update_input_map(x_mark_horizon=('x_mark', 'horizon'))
+        # torch_dataset.update_input_map(y_horizon=('target', 'horizon'))
     if cfg.axis:
         transform = {'target': StandardScaler(axis=(0))} 
     else:
@@ -200,18 +225,34 @@ def run_traffic(cfg: DictConfig):
 
     model_cls = get_model_class(cfg.model.name)
 
+    if covariates is None:
+        exog_size = None 
+    elif 'u' in torch_dataset.input_map.__dict__: 
+        exog_size = torch_dataset.input_map.u.shape[-1]
+    elif 'informer' in cfg.model.name:
+        exog_size = torch_dataset.input_map.x_mark.shape[-1]
+        print('exog_size', exog_size)
+        print('covariates', covariates['x_mark'].shape)
+
     model_kwargs = dict(n_nodes=torch_dataset.n_nodes,
                         input_size=torch_dataset.n_channels,
                         output_size=torch_dataset.n_channels,
                         horizon=torch_dataset.horizon,
                         window=torch_dataset.window,
-                        exog_size= None if covariates is None else torch_dataset.input_map.u.shape[-1])
+                        exog_size= exog_size)
 
     model_cls.filter_model_args_(model_kwargs)
     model_kwargs.update(cfg.model.hparams)
 
     loss_fn = torch_metrics.MaskedMSE()
 
+    if cfg.lr_scheduler is not None:
+        scheduler_class = getattr(torch.optim.lr_scheduler,
+                                  cfg.lr_scheduler.name)
+        scheduler_kwargs = dict(cfg.lr_scheduler.hparams)
+    else:
+        scheduler_class = scheduler_kwargs = None
+        
     log_metrics = {
         'mae': torch_metrics.MaskedMAE(),
         'mse': torch_metrics.MaskedMSE(),
@@ -223,15 +264,6 @@ def run_traffic(cfg: DictConfig):
         'maape': torch_metrics.MaskedMAAPE(),
     }
 
-    if cfg.lr_scheduler is not None:
-        scheduler_class = getattr(torch.optim.lr_scheduler,
-                                  cfg.lr_scheduler.name)
-        scheduler_kwargs = dict(cfg.lr_scheduler.hparams)
-    else:
-        scheduler_class = scheduler_kwargs = None
-
-    # setup predictor
-    # if cfg.model.name != 'es':
     predictor = Predictor(
         model_class=model_cls,
         model_kwargs=model_kwargs,
@@ -241,7 +273,7 @@ def run_traffic(cfg: DictConfig):
         metrics=log_metrics,
         scheduler_class=scheduler_class,
         scheduler_kwargs=scheduler_kwargs,
-        scale_target=cfg.scale_target,
+        scale_target=True,
     )
     
 
@@ -249,14 +281,14 @@ def run_traffic(cfg: DictConfig):
     # training                             #
     ########################################
 
-    early_stop_callback = EarlyStopping(monitor='val_mae',
+    early_stop_callback = EarlyStopping(monitor='val_loss',
                                         patience=cfg.patience,
                                         mode='min')
 
     checkpoint_callback = ModelCheckpoint(
         dirpath=cfg.run.dir,
         save_top_k=1,
-        monitor='val_mae',
+        monitor='val_mse',
         mode='min',
     )
 
@@ -321,7 +353,7 @@ def run_traffic(cfg: DictConfig):
    
     # numpy_plot(len_pred=cfg.horizon, y_hat=y_hat, title='Dlinear Forecasting', y_true=y_true)
     
-    
+    # plot_lr_scheduler(exp_logger, cfg.optimizer.hparams.lr, cfg.lr_scheduler.hparams.gamma, cfg.epochs)
     exp_logger.finalize('success')
     trainer.logger.finalize('success')
     exp_logger.experiment.stop()

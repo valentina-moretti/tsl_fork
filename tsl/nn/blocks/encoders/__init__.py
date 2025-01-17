@@ -1,4 +1,4 @@
-from . import multi, recurrent
+# from . import multi, recurrent
 from .conditional import ConditionalBlock, ConditionalTCNBlock
 from .mlp import MLP, ResidualMLP
 from .mlp_attention import MLPAttention, TemporalMLPAttention
@@ -8,7 +8,10 @@ from .recurrent import (AGCRN, DCRNN, RNN, DenseDCRNN, EvolveGCN, GraphConvRNN,
 from .stcn import SpatioTemporalConvNet
 from .tcn import TemporalConvNet
 from .transformer import (SpatioTemporalTransformerLayer, Transformer,
-                          TransformerLayer)
+                          TransformerLayer, Informer)
+from .attention import AttentionLayer, FullAttention, ProbAttention
+from .embed import DataEmbedding
+from .informer_encoder import InformerConvLayer, InformerEncoder, InformerEncoderLayer
 
 __all__ = [
     'MLP',
@@ -32,7 +35,16 @@ __all__ = [
     'DCRNN',
     'DenseDCRNN',
     'AGCRN',
-    'EvolveGCN'
+    'EvolveGCN',
+    # Informer
+    'AttentionLayer',
+    'FullAttention',
+    'ProbAttention',
+    'DataEmbedding',
+    'InformerConvLayer',
+    'Informer',
+    'InformerEncoder',
+    'InformerEncoderLayer',
 ]
 
 enc_classes = __all__[:10]

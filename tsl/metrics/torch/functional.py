@@ -178,7 +178,7 @@ def mape(
     Returns:
         float | torch.Tensor: The Mean Absolute Percentage Error.
     """
-    err = torch.abs((y_hat - y) / (y + tsl.epsilon))
+    err = torch.abs((y_hat - y) / (y + tsl.epsilon)) # (y + tsl.epsilon) is not needed since we use mask_reduce
     return _masked_reduce(err, reduction, mask, nan_to_zero)
 
 
@@ -541,7 +541,7 @@ def mase(
     
     mae_err = torch.abs(y_hat - y)
     # mean absolute difference of consecutive observations
-    denominator = torch.mean(torch.abs(y[:, 1:] - y[:, :-1]), dim=1) + torch.finfo(torch.float).eps  # epsilon for stability
+    denominator = torch.mean(torch.abs(y[:, 1:] - y[:, :-1]), dim=1)
     denominator = denominator.unsqueeze(1)
     scaled_error = mae_err / denominator
     return _masked_reduce(scaled_error, reduction, mask, nan_to_zero)

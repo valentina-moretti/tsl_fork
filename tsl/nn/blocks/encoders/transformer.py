@@ -7,7 +7,10 @@ from torch import Tensor, nn
 from tsl.nn import utils
 from tsl.nn.layers.base import MultiHeadAttention
 from tsl.nn.layers.norm import LayerNorm
-
+from tsl.nn.blocks.encoders.attention import ProbAttention, FullAttention, AttentionLayer
+from tsl.nn.blocks.encoders.embed import DataEmbedding
+from tsl.nn.blocks.encoders.informer_encoder import InformerEncoder, InformerEncoderLayer, InformerConvLayer
+from tsl.nn.blocks.decoders.informer_decoder import InformerDecoder, InformerDecoderLayer
 
 class TransformerLayer(nn.Module):
     r"""A Transformer layer from the paper `"Attention Is All You Need"
@@ -212,3 +215,123 @@ class Transformer(nn.Module):
         if self.readout is not None:
             return self.readout(x)
         return x
+
+
+
+
+
+
+
+class Informer(nn.Module):
+    r"""
+    The Informer model for long-sequence time-series forecasting, refactored
+    with separated Informer layers for modularity.
+
+    Args:
+        enc_in (int): Input dimension for the encoder.
+        dec_in (int): Input dimension for the decoder.
+        c_out (int): Output dimension.
+        seq_len (int): Sequence length for the encoder.
+        out_len (int): Output sequence length.
+        factor (int): Factor for ProbSparse self-attention.
+        d_model (int): Hidden dimensionality.
+        n_heads (int): Number of attention heads.
+        e_layers (int): Number of encoder layers.
+        d_layers (int): Number of decoder layers.
+        d_ff (int): Feed-forward network dimensionality.
+        dropout (float): Dropout rate.
+        attn (str): Type of attention ('prob' or 'full').
+        embed (str): Type of embedding ('fixed' or 'learned').
+        activation (str): Activation function ('gelu', 'relu', etc.).
+        output_attention (bool): Whether to return attention weights.
+        distil (bool): Whether to apply convolutional distillation.
+        mix (bool): Whether to mix attention in the decoder.
+        freq (str): Frequency of the time series.
+    """
+
+    def __init__(self, 
+                 enc_in, 
+                 dec_in, 
+                 c_out, 
+                 out_len,
+                 factor=5, 
+                 d_model=16, 
+                 n_heads=8, 
+                 e_layers=3, 
+                 d_layers=2,
+                 d_ff=512, 
+                 dropout=0.0, 
+                 attn='prob', 
+                 embed='fixed', 
+                 activation='gelu', 
+                 output_attention=False, 
+                 distil=True, 
+                 mix=True,
+                 freq='h'):
+        super(Informer, self).__init__()
+
+        self.pred_len = out_len
+        self.attn = attn
+        self.output_attention = output_attention
+
+        # Encoding
+        self.enc_embedding = DataEmbedding(enc_in, d_model, embed, freq, dropout)
+        self.dec_embedding = DataEmbedding(dec_in, d_model, embed, freq, dropout)
+        # Attention
+        Attn = ProbAttention if attn=='prob' else FullAttention
+        # Encoder
+        self.encoder = InformerEncoder(
+            [
+                InformerEncoderLayer(
+                    AttentionLayer(Attn(False, factor, attention_dropout=dropout, output_attention=output_attention), 
+                                d_model, n_heads, mix=False),
+                    d_model,
+                    d_ff,
+                    dropout=dropout,
+                    activation=activation
+                ) for l in range(e_layers)
+            ],
+            [
+                InformerConvLayer(
+                    d_model
+                ) for l in range(e_layers-1)
+            ] if distil else None,
+            norm_layer=nn.LayerNorm(d_model)
+        )
+        # Decoder
+        self.decoder = InformerDecoder(
+            [
+                InformerDecoderLayer(
+                    AttentionLayer(Attn(True, factor, attention_dropout=dropout, output_attention=False), 
+                                d_model, n_heads, mix=mix),
+                    AttentionLayer(FullAttention(False, factor, attention_dropout=dropout, output_attention=False), 
+                                d_model, n_heads, mix=False),
+                    d_model,
+                    d_ff,
+                    dropout=dropout,
+                    activation=activation,
+                )
+                for l in range(d_layers)
+            ],
+            norm_layer=nn.LayerNorm(d_model)
+        )
+        # self.end_conv1 = nn.Conv1d(in_channels=label_len+out_len, out_channels=out_len, kernel_size=1, bias=True)
+        # self.end_conv2 = nn.Conv1d(in_channels=d_model, out_channels=c_out, kernel_size=1, bias=True)
+        self.projection = nn.Linear(d_model, c_out, bias=True)
+        
+        
+    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, 
+                enc_self_mask=None, dec_self_mask=None, dec_enc_mask=None):
+        enc_out = self.enc_embedding(x_enc, x_mark_enc)
+        enc_out, attns = self.encoder(enc_out, attn_mask=enc_self_mask)
+
+        dec_out = self.dec_embedding(x_dec, x_mark_dec)
+        dec_out = self.decoder(dec_out, enc_out, x_mask=dec_self_mask, cross_mask=dec_enc_mask)
+        dec_out = self.projection(dec_out)
+        
+        # dec_out = self.end_conv1(dec_out)
+        # dec_out = self.end_conv2(dec_out.transpose(2,1)).transpose(1,2)
+        if self.output_attention:
+            return dec_out[:,-self.pred_len:,:], attns
+        else:
+            return dec_out[:,-self.pred_len:,:] # [B, L, D]

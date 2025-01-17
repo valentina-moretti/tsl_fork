@@ -10,6 +10,7 @@ from tsl.data import Data
 from tsl.metrics.torch import MaskedMetric
 from tsl.nn.models import BaseModel
 from tsl.utils import foo_signature
+from tsl.utils.python_utils import ensure_list
 
 
 class Predictor(pl.LightningModule):
@@ -389,14 +390,14 @@ class Predictor(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         """"""
         # Compute outputs and rescale
-        y_hat = self.predict_batch(batch, preprocess=False, postprocess=False) #TODO rimetto postprocess=postprocess
+        y_hat = self.predict_batch(batch, preprocess=False, postprocess=False) #TODO rimetto postprocess=True
         batch_size = batch.size(0)
         
         y, mask = batch.y, batch.get('mask')
 
         # Scale target and output, eventually
         #TODO togliere
-        if True:
+        if  self.scale_target:
             y_loss = batch.transform['y'].transform(y)
 
 
@@ -432,3 +433,18 @@ class Predictor(pl.LightningModule):
             if metric is not None:
                 cfg['monitor'] = metric
         return cfg
+
+    def on_train_epoch_start(self) -> None:
+        optimizers = ensure_list(self.optimizers())
+        for i, optimizer in enumerate(optimizers):
+            lr = optimizer.optimizer.param_groups[0]["lr"]
+            print(f"lr_{i}: {lr} at epoch {self.current_epoch}")
+            self.log(
+                f"lr_{i}",
+                lr,
+                on_step=False,
+                on_epoch=True,
+                logger=True,
+                prog_bar=False,
+                batch_size=1,
+            )

@@ -33,7 +33,6 @@ epochs: 300
 patience: 50
 batch_size: 64
 grad_clip_val: 5
-scale_target: False
 n_samples_trim: 500 #TODO put 1000
 
 optimizer:

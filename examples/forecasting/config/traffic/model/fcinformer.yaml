@@ -1,0 +1,22 @@
+# @package _global_
+
+#### Model params #############################################################
+model:
+  name: fcinformer
+  hparams:
+    hidden_size: 512
+    label_len: 48
+    e_layers: 2
+    d_layers: 1
+    attn: prob
+    factor: 5 #3
+    dropout: 0.05
+    padding: 0
+    n_heads: 8 
+    embed: timeF
+    activation: gelu
+    distil: True
+    output_attention: False
+    mix: True
+    d_ff: 2048
+    

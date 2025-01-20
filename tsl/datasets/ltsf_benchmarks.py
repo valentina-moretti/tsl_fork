@@ -1,12 +1,13 @@
+# import re
 from typing import Optional
 import pandas as pd
 import torch
 import numpy as np
-from tsl.data import Splitter, Data
-
+from tsl.data import Splitter #, Data
+import os
 from tsl.datasets.prototypes import DatetimeDataset
 from tsl.utils import download_url
-from tsl.data.preprocessing import ScalerModule
+# from tsl.data.preprocessing import ScalerModule
 from tsl.data.datamodule import AtTimeStepSplitter
 
 # MONASH
@@ -313,7 +314,6 @@ class _LTSFDataset(DatetimeDataset):
             print("No missing values")
         
         # Change columns to multiindex
-        
         if not self.bool_multinode:
             print("Not multinode")
             df.columns = pd.MultiIndex.from_product([['global_node'], df.columns],
@@ -334,6 +334,15 @@ class _LTSFDataset(DatetimeDataset):
         self.clean_downloads()
 
     def load_raw(self) -> pd.DataFrame:
+
+        # TODO remove this 6 lines after you have run all the datasets at least once, because now you have the old version with 1 node and many channels
+        print(self.required_files_paths[0])
+        if os.path.exists(self.required_files_paths[0]):
+            os.remove(self.required_files_paths[0])
+            print(f"Removed {self.required_files_paths[0]}")
+        else:
+            print(f"{self.required_files_paths[0]} does not exist")
+
         self.maybe_build()
         df = pd.read_hdf(self.required_files_paths[0], key='data')
         #print("Load raw finished")
@@ -441,7 +450,7 @@ class ETTm2(_LTSFDataset):
         return ['ETTm2.csv']
     
 class TrafficDataset(_LTSFDataset):
-    url = ('https://drive.google.com/file/d/1U3BZ3Wvuvd9HVAx5Nl3bHYG9rsh5-yZX/view?usp=sharing') #TODO change link
+    url = ('changeme') #TODO change link
     default_freq = '1h'
     bool_multinode = False
 
@@ -451,7 +460,7 @@ class TrafficDataset(_LTSFDataset):
     
     
 class PemsBayDataset(_LTSFDataset):
-    url = None #TODO change link
+    url = ('https://drive.switch.ch/index.php/s/8arMIED3MJlLJNI/download') 
     default_freq = '5min'
     bool_multinode = False
 
@@ -460,7 +469,7 @@ class PemsBayDataset(_LTSFDataset):
         return ['pems_bay.csv']
     
 class MetrLaDataset(_LTSFDataset):
-    url = None #TODO change link
+    url = ('https://drive.switch.ch/index.php/s/JdCTz0OfrMlgaBW/download')
     default_freq = '5min'
     bool_multinode = False
 
@@ -469,7 +478,7 @@ class MetrLaDataset(_LTSFDataset):
         return ['METR-LA.csv'] 
     
 class M4Dataset(_LTSFDataset):
-    url = ('https://drive.google.com/file/d/1U3BZ3Wvuvd9HVAx5Nl3bHYG9rsh5-yZX/view?usp=sharing') #TODO change link
+    url = ('https://drive.switch.ch/index.php/s/C5aHSa9W5uRcVWz/download')
     default_freq = '1h'
     bool_multinode = False
 
@@ -478,7 +487,7 @@ class M4Dataset(_LTSFDataset):
         return ['m4_hourly_dataset.tsf']
     
 class ElectricityDataset(_LTSFDataset):
-    url = ('https://drive.google.com/file/d') #TODO change link (this is csv not electricity_hourly_dataset.tsf)
+    url = ('https://drive.switch.ch/index.php/s/Wlr4jMYPb5fM69A/download')
     default_freq = '1h'
     bool_multinode = True
 

@@ -229,9 +229,14 @@ class InformerModel(BaseModel):
         Returns:
             Tensor: Output tensor of shape [batch_size, horizon, output_size].
         """
-
         n = x.size(2)
         x = rearrange(x, 'b s n f -> (b n) s f')
+        # repeat x_mark and x_mark_horizon for each node
+        x_mark_enc = x_mark.unsqueeze(2).repeat(1, 1, n, 1)
+        x_mark_horizon = x_mark_horizon.unsqueeze(2).repeat(1, 1, n, 1)
+        x_mark_enc = rearrange(x_mark_enc, 'b s n f_cov -> (b n) s f_cov')
+        x_mark_horizon = rearrange(x_mark_horizon, 'b s n f_cov -> (b n) s f_cov')
+         
 
         if self.padding==0:
             dec_pad = zeros(x.shape[0], self.pred_len, x.shape[-1]).cuda()
@@ -239,8 +244,7 @@ class InformerModel(BaseModel):
             dec_pad = ones(x.shape[0], self.pred_len, x.shape[-1]).cuda()
 
 
-        
-        x_mark_enc = x_mark
+    
         x_enc = x[:, :self.seq_len, :]
         x_dec = cat([x[:, self.seq_len-self.label_len:, :], dec_pad], dim=1)
         
@@ -315,8 +319,8 @@ class FCInformerModel(BaseModel):
 
         Args:
             x (Tensor): Input tensor of shape [batch_size, seq_len, input_size].
-            x_mark_enc (Tensor): Encoded time features for the encoder input.
-            x_mark_dec (Tensor): Encoded time features for the decoder input.
+            x_mark (Tensor): Encoded time features corresponding to the input sequence.
+            x_mark_horizon (Tensor): Encoded time features corresponding to the horizon.
 
         Returns:
             Tensor: Output tensor of shape [batch_size, horizon, output_size].

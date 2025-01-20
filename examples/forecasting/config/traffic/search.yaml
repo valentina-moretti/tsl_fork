@@ -18,27 +18,38 @@ hydra:
   mode: MULTIRUN
   sweeper:
     direction: minimize  # minimize if loss is MSE
-    n_trials: 1
+    n_trials: 100
     n_jobs: 1
     storage: null
     params:
       # Constant params
       window: 48
-      optimizer.hparams.lr: 0.00005
-      dataset: electricity
-      model: rnn
-      lr_scheduler: exp
-      lr_scheduler.hparams.gamma: 1.0
-      model.hparams.hidden_size: 128
-      model.hparams.rec_layers: 4
-      # model.hparams.n_layers: 1
-      # model.hparams.n_heads: 1
-      model.hparams.ff_size: 32
-      # model.hparams.kernel_size: 7, 15, 31
+      horizon: 96
+      optimizer.hparams.lr: 0.000005, 0.00001, 0.00005
+      dataset: etth1
+      model: informer
+      lr_scheduler: multistep, cosine
+      # lr_scheduler.hparams.gamma: 1.0
+      model.hparams.hidden_size: 128, 256, 512, 1024
+      model.hparams.e_layers: 1, 2, 4
+      model.hparams.d_layers: 1, 2, 4
+      model.hparams.attn: prob
+      model.hparams.factor: 3, 5, 8
+      model.hparams.dropout: 0.05
+      model.hparams.padding: 0
+      model.hparams.n_heads: 8, 16, 32
+      model.hparams.embed: timeF
+      model.hparams.activation: gelu
+      model.hparams.distil: True
+      model.hparams.output_attention: False
+      model.hparams.mix: True
+      model.hparams.d_ff: 1024, 2048
       train_batches: 1.0
-      axis: 1
-      bool_iid_dataset: False
-      epochs: 120
+      axis: 1 #TODO put 1
+      epochs: 40
+      batch_size: 32
+      patience: 10
+
 
       
       

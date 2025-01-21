@@ -18,6 +18,7 @@ seed: 2021  # automatically set everywhere the seed
 tags:
   - ${model.name}
   - ${dataset.name}
+  - final_informer_giusto
 
 workers: 0
 num_threads: 1  # limit the number of pytorch threads spawn
@@ -36,3 +37,4 @@ grad_clip_val: 5
 bool_iid_dataset: False
 train_batches: 1.0
 axis: 0
+num_nodes_transform: 0

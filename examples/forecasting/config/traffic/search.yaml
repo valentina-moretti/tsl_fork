@@ -26,8 +26,8 @@ hydra:
       window: 48
       horizon: 96
       optimizer.hparams.lr: 0.000005, 0.00001, 0.00005
-      dataset: etth1
-      model: informer
+      dataset: etth2
+      model: fcinformer
       lr_scheduler: multistep, cosine
       # lr_scheduler.hparams.gamma: 1.0
       model.hparams.hidden_size: 128, 256, 512, 1024
@@ -49,7 +49,7 @@ hydra:
       epochs: 40
       batch_size: 32
       patience: 10
-
+      num_nodes_transform: 3 #TODO ATTENZIONE SE != 0
 
       
       

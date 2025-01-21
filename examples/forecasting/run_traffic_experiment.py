@@ -6,7 +6,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import Logger, TensorBoardLogger, WandbLogger
 from tsl.utils.plot import numpy_plot
-from tsl import logger
+from tsl import data, logger
 from tsl.metrics import numpy as numpy_metrics
 from tsl.metrics import torch as torch_metrics
 from tsl.nn import models
@@ -25,7 +25,8 @@ from tsl.datasets import MetrLA, PemsBay
 from tsl.datasets.pems_benchmarks import PeMS03, PeMS04, PeMS07, PeMS08
 from tsl.data.datamodule import SpatioTemporalDataModule
 from tsl.datasets.ltsf_benchmarks import ETTh1, ETTh2, ETTm1, ETTm2, ETTSplitter, ElectricityDataset
-from tsl.data.batch_map import BatchMapItem
+# from tsl.data.batch_map import BatchMapItem
+from tsl.transforms import SampleNodeTransform
 from tsl.utils.timefeatures import time_features
 # from tsl.utils import plot_lr_scheduler
 
@@ -148,7 +149,7 @@ def run_traffic(cfg: DictConfig):
 
     dataset = get_dataset(dataset_name=cfg.dataset.name, cfg_dataset=cfg.dataset)
 
-    bool_iid_dataset = cfg.bool_iid_dataset
+    bool_iid = cfg.bool_iid_dataset
     # encode time of the day and use it as exogenous variable
     # covariates = {'u': dataset.datetime_encoded(['hour', 'day']).values}
     if 'informer' in cfg.model.name:
@@ -160,6 +161,7 @@ def run_traffic(cfg: DictConfig):
         # So, in this case, we would have have 6 columns in total.
         # covariates = {'x_mark': dataset.datetime_idx(['month', 'day', 'weekday', 'hour']).values}
         timefeatures = time_features(dataset.dataframe().index, timeenc=1, freq='h')
+        
         covariates = {'x_mark': timefeatures}
     else:
         covariates = None
@@ -168,7 +170,8 @@ def run_traffic(cfg: DictConfig):
     adj = None
     # adj = dataset.get_connectivity(**cfg.dataset.connectivity)
 
-    if cfg.bool_iid_dataset:
+    num_nodes_transform = cfg.num_nodes_transform
+    if bool_iid:
         torch_dataset = IIDDataset(
             target=dataset.dataframe(),
             mask=dataset.mask,
@@ -186,17 +189,18 @@ def run_traffic(cfg: DictConfig):
             mask=dataset.mask,
             connectivity=adj,
             covariates=covariates,
+            transform=None if num_nodes_transform==0 else SampleNodeTransform(dataset.n_nodes, num_nodes_transform),
             horizon=cfg.horizon,
             window=cfg.window,
             stride=cfg.stride,
         )
-
     
     if 'informer' in cfg.model.name:
         # future_covariate = BatchMapItem( synch_mode= 'horizon', 
         #                                 pattern = 't f', t = 'time', f = 'feature')
         # torch_dataset.update_input_map('x_mark', future_covariate)
         torch_dataset.update_input_map(x_mark_horizon=('x_mark', 'horizon'))
+        
         # torch_dataset.update_input_map(y_horizon=('target', 'horizon'))
     if cfg.axis:
         transform = {'target': StandardScaler(axis=(0))} 
@@ -215,7 +219,7 @@ def run_traffic(cfg: DictConfig):
         splitter=splitter,
         batch_size=cfg.batch_size,
         workers=cfg.workers,
-        bool_iid_dataset=bool_iid_dataset
+        bool_iid_dataset=bool_iid
     )
     dm.setup()
 
@@ -224,7 +228,7 @@ def run_traffic(cfg: DictConfig):
     ########################################
 
     model_cls = get_model_class(cfg.model.name)
-
+    
     if covariates is None:
         exog_size = None 
     elif 'u' in torch_dataset.input_map.__dict__: 
@@ -234,12 +238,12 @@ def run_traffic(cfg: DictConfig):
         print('exog_size', exog_size)
         print('covariates', covariates['x_mark'].shape)
 
-    model_kwargs = dict(n_nodes=torch_dataset.n_nodes,
+    model_kwargs = dict(n_nodes=torch_dataset.n_nodes if num_nodes_transform==0 else num_nodes_transform,
                         input_size=torch_dataset.n_channels,
                         output_size=torch_dataset.n_channels,
                         horizon=torch_dataset.horizon,
                         window=torch_dataset.window,
-                        exog_size= exog_size)
+                        exog_size=exog_size)
 
     model_cls.filter_model_args_(model_kwargs)
     model_kwargs.update(cfg.model.hparams)

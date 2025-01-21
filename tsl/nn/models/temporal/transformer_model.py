@@ -245,12 +245,12 @@ class InformerModel(BaseModel):
 
 
     
-        x_enc = x[:, :self.seq_len, :]
+        # x_enc = x[:, :self.seq_len, :]
         x_dec = cat([x[:, self.seq_len-self.label_len:, :], dec_pad], dim=1)
         
         x_mark_dec = cat([x_mark_enc[:, self.seq_len-self.label_len:, :], x_mark_horizon], dim=1)
         output = self.informer(
-            x_enc=x_enc,
+            x_enc=x,
             x_mark_enc=x_mark_enc,
             x_dec=x_dec,
             x_mark_dec=x_mark_dec
@@ -267,6 +267,7 @@ class FCInformerModel(BaseModel):
     def __init__(self,
                  input_size: int,
                  output_size: int,
+                 n_nodes: int,
                  horizon: int,
                  window: int,
                  label_len: int = 10,
@@ -293,9 +294,9 @@ class FCInformerModel(BaseModel):
         
         # Define Informer
         self.informer = Informer(
-            enc_in=input_size,
-            dec_in=input_size,
-            c_out=output_size,
+            enc_in=input_size*n_nodes,
+            dec_in=input_size*n_nodes,
+            c_out=output_size*n_nodes,
             out_len=horizon,
             factor=factor,
             d_model=hidden_size,
@@ -334,13 +335,13 @@ class FCInformerModel(BaseModel):
             dec_pad = ones(x.shape[0], self.pred_len, x.shape[-1]).cuda()
 
         x_mark_enc = x_mark
-        x_enc = x[:, :self.seq_len, :]
+        # x_enc = x[:, :self.seq_len, :]
         
         x_dec = cat([x[:, self.seq_len-self.label_len:, :], dec_pad], dim=1)
         
         x_mark_dec = cat([x_mark_enc[:, self.seq_len-self.label_len:, :], x_mark_horizon], dim=1)
         output = self.informer(
-            x_enc=x_enc,
+            x_enc=x,
             x_mark_enc=x_mark_enc,
             x_dec=x_dec,
             x_mark_dec=x_mark_dec

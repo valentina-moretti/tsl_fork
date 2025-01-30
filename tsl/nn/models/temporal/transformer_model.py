@@ -11,7 +11,21 @@ from tsl.nn.layers import PositionalEncoding
 from tsl.nn.layers.ops import Select
 from tsl.nn.models.base_model import BaseModel
 from tsl.nn.blocks.encoders import Informer
+from tsl.nn.blocks.encoders.patchtsts_encoder import PatchTST_backbone
+from tsl.nn.blocks.encoders.positional_encoding import moving_avg
 
+class series_decomp(nn.Module):
+    """
+    Series decomposition block
+    """
+    def __init__(self, kernel_size):
+        super(series_decomp, self).__init__()
+        self.moving_avg = moving_avg(kernel_size, stride=1)
+
+    def forward(self, x):
+        moving_mean = self.moving_avg(x)
+        res = x - moving_mean
+        return res, moving_mean
 
 class TransformerModel(BaseModel):
     r"""A Transformer from the paper `"Attention Is All You Need"
@@ -348,3 +362,236 @@ class FCInformerModel(BaseModel):
         )
         output = rearrange(output, 'b h (n f) -> b h n f', n=n)
         return output
+
+
+
+
+__all__ = ['PatchTST']
+
+
+class PatchTSTModel(BaseModel):
+    """
+    This code is adapted from the original implementation of PatchTST: https://github.com/yuqinie98/PatchTST/tree/204c21efe0b39603ad6e2ca640ef5896646ab1a9
+    
+    PatchTST: Patch Transformer with Time Series
+    Args:
+        input_size (int): Number of input features.
+        horizon (int): Number of steps to forecast.
+        window (int): Length of the input sequence.
+        hidden_size (int): Dimension of the learned representations.
+        n_nodes (int): Number of nodes.
+        d_ff (int): Units in the feed-forward layers.
+        n_heads (int): Number of parallel attention heads.
+        e_layers (int): Number of encoder layers.
+        dropout (float): Dropout probability.   
+        fc_dropout (float): Dropout probability for the fully connected layer.
+        head_dropout (float): Dropout probability for the head layer.
+        patch_len (int): Length of the patch.
+        stride (int): Stride of the patch.
+        padding_patch (int): Padding of the patch.
+        individual (bool): Whether to use individual attention.
+        revin (bool): Whether to use reverse attention.
+        affine (bool): Whether to use affine transformation.
+        subtract_last (bool): Whether to subtract the last element.
+        decomposition (bool): Whether to use series decomposition.
+        kernel_size (int): Size of the kernel for series decomposition.
+        max_seq_len (int): Maximum sequence length.
+        d_k (int): Dimension of the key.
+        d_v (int): Dimension of the value.
+        norm (str): Type of normalization.
+        attn_dropout (float): Dropout probability for the attention layer.
+        act (str): Activation function.
+        key_padding_mask (bool): Whether to use key padding mask.
+        padding_var (int): Padding variable.
+        attn_mask (Tensor): Attention mask.
+        res_attention (bool): Whether to use residual attention.
+        pre_norm (bool): Whether to use pre-normalization.
+        store_attn (bool): Whether to store attention.
+        pe (str): Type of positional encoding.
+        learn_pe (bool): Whether to learn positional encoding.
+        pretrain_head (bool): Whether to pretrain the head
+        head_type (str): Type of head.
+        verbose (bool): Whether to print the model.
+    """
+    def __init__(self, input_size: int, horizon: int, window: int, hidden_size: int = 512, n_nodes: int = 1,
+                 d_ff: int = 512, n_heads: int = 8, e_layers: int = 3, dropout: float = 0.1, fc_dropout: float = 0.1, head_dropout: float = 0.1,
+                 patch_len: int = 4, stride: int = 4, padding_patch: int = 0, individual: bool = False, revin: bool = False, affine: bool = False, subtract_last: bool = False,
+                 decomposition:bool=False, kernel_size:int=3,
+                 max_seq_len:Optional[int]=1024, d_k:Optional[int]=None, d_v:Optional[int]=None, norm:str='BatchNorm', attn_dropout:float=0., 
+                 act:str="gelu", key_padding_mask:bool='auto',padding_var:Optional[int]=None, attn_mask:Optional[Tensor]=None, res_attention:bool=True, 
+                 pre_norm:bool=False, store_attn:bool=False, pe:str='zeros', learn_pe:bool=True, pretrain_head:bool=False, head_type = 'flatten', verbose:bool=False, **kwargs):
+        
+        super().__init__()
+        
+        # load parameters
+        self.n_nodes = n_nodes
+        c_in = input_size
+        context_window = window
+        target_window = horizon
+        
+        n_layers = e_layers
+        n_heads = n_heads
+        d_model = hidden_size
+        d_ff = d_ff
+        dropout = dropout
+        fc_dropout = fc_dropout
+        head_dropout = head_dropout
+        
+        individual = individual
+    
+        patch_len = patch_len
+        stride = stride
+        padding_patch = padding_patch
+        
+        revin = revin
+        affine = affine
+        subtract_last = subtract_last
+        
+        decomposition = decomposition
+        kernel_size = kernel_size
+        
+        
+        # model
+        self.decomposition = decomposition
+        if self.decomposition:
+            self.decomp_module = series_decomp(kernel_size)
+            self.model_trend = PatchTST_backbone(c_in=c_in, context_window = context_window, target_window=target_window, patch_len=patch_len, stride=stride, 
+                                  max_seq_len=max_seq_len, n_layers=n_layers, d_model=d_model,
+                                  n_heads=n_heads, d_k=d_k, d_v=d_v, d_ff=d_ff, norm=norm, attn_dropout=attn_dropout,
+                                  dropout=dropout, act=act, key_padding_mask=key_padding_mask, padding_var=padding_var, 
+                                  attn_mask=attn_mask, res_attention=res_attention, pre_norm=pre_norm, store_attn=store_attn,
+                                  pe=pe, learn_pe=learn_pe, fc_dropout=fc_dropout, head_dropout=head_dropout, padding_patch = padding_patch,
+                                  pretrain_head=pretrain_head, head_type=head_type, individual=individual, revin=revin, affine=affine,
+                                  subtract_last=subtract_last, verbose=verbose, **kwargs)
+            self.model_res = PatchTST_backbone(c_in=c_in, context_window = context_window, target_window=target_window, patch_len=patch_len, stride=stride, 
+                                  max_seq_len=max_seq_len, n_layers=n_layers, d_model=d_model,
+                                  n_heads=n_heads, d_k=d_k, d_v=d_v, d_ff=d_ff, norm=norm, attn_dropout=attn_dropout,
+                                  dropout=dropout, act=act, key_padding_mask=key_padding_mask, padding_var=padding_var, 
+                                  attn_mask=attn_mask, res_attention=res_attention, pre_norm=pre_norm, store_attn=store_attn,
+                                  pe=pe, learn_pe=learn_pe, fc_dropout=fc_dropout, head_dropout=head_dropout, padding_patch = padding_patch,
+                                  pretrain_head=pretrain_head, head_type=head_type, individual=individual, revin=revin, affine=affine,
+                                  subtract_last=subtract_last, verbose=verbose, **kwargs)
+        else:
+            self.model = PatchTST_backbone(c_in=c_in, context_window = context_window, target_window=target_window, patch_len=patch_len, stride=stride, 
+                                  max_seq_len=max_seq_len, n_layers=n_layers, d_model=d_model,
+                                  n_heads=n_heads, d_k=d_k, d_v=d_v, d_ff=d_ff, norm=norm, attn_dropout=attn_dropout,
+                                  dropout=dropout, act=act, key_padding_mask=key_padding_mask, padding_var=padding_var, 
+                                  attn_mask=attn_mask, res_attention=res_attention, pre_norm=pre_norm, store_attn=store_attn,
+                                  pe=pe, learn_pe=learn_pe, fc_dropout=fc_dropout, head_dropout=head_dropout, padding_patch = padding_patch,
+                                  pretrain_head=pretrain_head, head_type=head_type, individual=individual, revin=revin, affine=affine,
+                                  subtract_last=subtract_last, verbose=verbose, **kwargs)
+    
+    
+    def forward(self, x):     
+        n = x.size(2)
+        x = rearrange(x, 'b s n f -> (b n) s f')    # x: [Batch, Input length, Channel]
+        if self.decomposition:
+            res_init, trend_init = self.decomp_module(x)
+            res_init, trend_init = res_init.permute(0,2,1), trend_init.permute(0,2,1)  # x: [Batch, Channel, Input length]
+            res = self.model_res(res_init)
+            trend = self.model_trend(trend_init)
+            x = res + trend
+            x = x.permute(0,2,1)    # x: [Batch, Input length, Channel]
+        else:
+            x = x.permute(0,2,1)    # x: [Batch, Channel, Input length]
+            x = self.model(x)
+            x = x.permute(0,2,1)    # x: [Batch, Input length, Channel]
+        
+        x = rearrange(x, '(b n) s f -> b s n f', n=n)    # x: [Batch, Input length, Node, Channel]
+        return x
+    
+
+
+# class FCPatchTSTModel(BaseModel):
+#     """
+#     Global PatchTST model for multistep forecasting.
+#     """
+#     def __init__(self, input_size: int, horizon: int, window: int, hidden_size: int = 512, n_nodes: int = 1,
+#                  d_ff: int = 512, n_heads: int = 8, e_layers: int = 3, dropout: float = 0.1, fc_dropout: float = 0.1, head_dropout: float = 0.1,
+#                  patch_len: int = 4, stride: int = 4, padding_patch: int = 0, individual: bool = False, revin: bool = False, affine: bool = False, subtract_last: bool = False,
+#                  decomposition:bool=False, kernel_size:int=3,
+#                  max_seq_len:Optional[int]=1024, d_k:Optional[int]=None, d_v:Optional[int]=None, norm:str='BatchNorm', attn_dropout:float=0., 
+#                  act:str="gelu", key_padding_mask:bool='auto',padding_var:Optional[int]=None, attn_mask:Optional[Tensor]=None, res_attention:bool=True, 
+#                  pre_norm:bool=False, store_attn:bool=False, pe:str='zeros', learn_pe:bool=True, pretrain_head:bool=False, head_type = 'flatten', verbose:bool=False, **kwargs):
+        
+#         super().__init__()
+        
+#         # load parameters
+#         self.n_nodes = n_nodes
+#         c_in = input_size*n_nodes
+#         context_window = window
+#         target_window = horizon
+        
+#         n_layers = e_layers
+#         n_heads = n_heads
+#         d_model = hidden_size
+#         d_ff = d_ff
+#         dropout = dropout
+#         fc_dropout = fc_dropout
+#         head_dropout = head_dropout
+        
+#         individual = individual
+    
+#         patch_len = patch_len
+#         stride = stride
+#         padding_patch = padding_patch
+        
+#         revin = revin
+#         affine = affine
+#         subtract_last = subtract_last
+        
+#         decomposition = decomposition
+#         kernel_size = kernel_size
+        
+        
+#         # model
+#         self.decomposition = decomposition
+#         if self.decomposition:
+#             self.decomp_module = series_decomp(kernel_size)
+#             self.model_trend = PatchTST_backbone(c_in=c_in, context_window = context_window, target_window=target_window, patch_len=patch_len, stride=stride, 
+#                                   max_seq_len=max_seq_len, n_layers=n_layers, d_model=d_model,
+#                                   n_heads=n_heads, d_k=d_k, d_v=d_v, d_ff=d_ff, norm=norm, attn_dropout=attn_dropout,
+#                                   dropout=dropout, act=act, key_padding_mask=key_padding_mask, padding_var=padding_var, 
+#                                   attn_mask=attn_mask, res_attention=res_attention, pre_norm=pre_norm, store_attn=store_attn,
+#                                   pe=pe, learn_pe=learn_pe, fc_dropout=fc_dropout, head_dropout=head_dropout, padding_patch = padding_patch,
+#                                   pretrain_head=pretrain_head, head_type=head_type, individual=individual, revin=revin, affine=affine,
+#                                   subtract_last=subtract_last, verbose=verbose, **kwargs)
+#             self.model_res = PatchTST_backbone(c_in=c_in, context_window = context_window, target_window=target_window, patch_len=patch_len, stride=stride, 
+#                                   max_seq_len=max_seq_len, n_layers=n_layers, d_model=d_model,
+#                                   n_heads=n_heads, d_k=d_k, d_v=d_v, d_ff=d_ff, norm=norm, attn_dropout=attn_dropout,
+#                                   dropout=dropout, act=act, key_padding_mask=key_padding_mask, padding_var=padding_var, 
+#                                   attn_mask=attn_mask, res_attention=res_attention, pre_norm=pre_norm, store_attn=store_attn,
+#                                   pe=pe, learn_pe=learn_pe, fc_dropout=fc_dropout, head_dropout=head_dropout, padding_patch = padding_patch,
+#                                   pretrain_head=pretrain_head, head_type=head_type, individual=individual, revin=revin, affine=affine,
+#                                   subtract_last=subtract_last, verbose=verbose, **kwargs)
+#         else:
+#             self.model = PatchTST_backbone(c_in=c_in, context_window = context_window, target_window=target_window, patch_len=patch_len, stride=stride, 
+#                                   max_seq_len=max_seq_len, n_layers=n_layers, d_model=d_model,
+#                                   n_heads=n_heads, d_k=d_k, d_v=d_v, d_ff=d_ff, norm=norm, attn_dropout=attn_dropout,
+#                                   dropout=dropout, act=act, key_padding_mask=key_padding_mask, padding_var=padding_var, 
+#                                   attn_mask=attn_mask, res_attention=res_attention, pre_norm=pre_norm, store_attn=store_attn,
+#                                   pe=pe, learn_pe=learn_pe, fc_dropout=fc_dropout, head_dropout=head_dropout, padding_patch = padding_patch,
+#                                   pretrain_head=pretrain_head, head_type=head_type, individual=individual, revin=revin, affine=affine,
+#                                   subtract_last=subtract_last, verbose=verbose, **kwargs)
+    
+    
+#         self.input_size = input_size
+                 
+#     def forward(self, x):
+#         n = x.size(2)
+#         x = rearrange(x, 'b s n f -> b s (n f)')    # x: [Batch, Input length, Channel]
+#         if self.decomposition:
+#             res_init, trend_init = self.decomp_module(x)
+#             res_init, trend_init = res_init.permute(0,2,1), trend_init.permute(0,2,1)  # x: [Batch, Channel, Input length]
+#             res = self.model_res(res_init)
+#             trend = self.model_trend(trend_init)
+#             x = res + trend
+#             x = x.permute(0,2,1)    # x: [Batch, Input length, Channel]
+#         else:
+#             x = x.permute(0,2,1)    # x: [Batch, Channel, Input length]
+#             x = self.model(x)
+#             x = x.permute(0,2,1)    # x: [Batch, Input length, Channel]
+        
+#         x = rearrange(x, 'b s (n f) -> b s n f', n=n, f=self.input_size)    # x: [Batch, Input length, Node, Channel]
+#         return x
+    

@@ -75,6 +75,10 @@ def get_model_class(model_str):
         model = models.InformerModel
     elif model_str == 'fcinformer':
         model = models.FCInformerModel
+    elif model_str == 'patchtst':
+        model = models.PatchTSTModel
+    # elif model_str == 'fcpatchtst':
+    #     model = models.FCPatchTSTModel
     else:
         raise NotImplementedError(f'Model "{model_str}" not available.')
     return model
@@ -318,27 +322,41 @@ def run_traffic(cfg: DictConfig):
     predictor.load_model(checkpoint_callback.best_model_path)
 
     predictor.freeze()
-    trainer.test(predictor, datamodule=dm)
 
-    output = trainer.predict(predictor, dataloaders=dm.test_dataloader())
-    output = predictor.collate_prediction_outputs(output)
-    output = torch_to_numpy(output)
+    # set dm.torch_dataset.transform to none with set_transform
+    if num_nodes_transform != 0:
+        dm.torch_dataset.__setattr__('transform', None)
+        dm.__setattr__('batch_size', 1)
 
 
+    
+
+    if num_nodes_transform == 0: #TODO remove this line
+        trainer.test(predictor, datamodule=dm)
+        output = trainer.predict(predictor, dataloaders=dm.test_dataloader())
+        output = predictor.collate_prediction_outputs(output)
+        output = torch_to_numpy(output)
+
+        y_hat, y_true, mask = (output['y_hat'], output['y'], 
+                                output.get('mask', None))
+        scaler = torch_dataset.scalers['target'].numpy()
         
-    y_hat, y_true, mask = (output['y_hat'], output['y'],
-                        output.get('mask', None))
-    scaler = torch_dataset.scalers['target'].numpy()
+        if num_nodes_transform == 0:
+            y_hat = scaler.transform(y_hat)
+            y_true = scaler.transform(y_true)
+        
+        
+        res = dict(test_mae=numpy_metrics.mae(y_hat, y_true, mask),
+                test_mse=numpy_metrics.mse(y_hat, y_true, mask),
+                test_rmse=numpy_metrics.rmse(y_hat, y_true, mask),
+                test_mape=numpy_metrics.mape(y_hat, y_true, mask),
+                test_mase=numpy_metrics.mase(y_hat, y_true, mask),
+                test_maape=numpy_metrics.maape(y_hat, y_true, mask))
     
-    y_hat = scaler.transform(y_hat)
-    y_true = scaler.transform(y_true)
-    
-    res = dict(test_mae=numpy_metrics.mae(y_hat, y_true, mask),
-            test_mse=numpy_metrics.mse(y_hat, y_true, mask),
-            test_rmse=numpy_metrics.rmse(y_hat, y_true, mask),
-            test_mape=numpy_metrics.mape(y_hat, y_true, mask),
-            test_mase=numpy_metrics.mase(y_hat, y_true, mask),
-            test_maape=numpy_metrics.maape(y_hat, y_true, mask))
+    else:
+        dm.__setattr__('batch_size', 1)
+        dm.torch_dataset.__setattr__('transform', None)
+        trainer.test(predictor, datamodule=dm)
 
     # TODO put again when I restore scaling for test
     # output = trainer.predict(predictor, dataloaders=dm.val_dataloader())
@@ -366,7 +384,10 @@ def run_traffic(cfg: DictConfig):
     gc.collect()
     urllib3.PoolManager().clear()
    
-    return res['test_mae']
+    if num_nodes_transform == 0:
+        return  res['test_mae'] 
+    else:
+        return 0.0
 
 
 if __name__ == '__main__':

@@ -1,0 +1,37 @@
+# @package _global_
+
+#### Model params #############################################################
+model:
+  name: patchtst
+  hparams:
+    kernel_size: 25
+    hidden_size: 128
+    e_layers: 3
+    stride: 8
+    d_layers: 1
+    attn: prob
+    padding_patch: 'end'
+    individual: False #DO NOT CHANGE
+    decomposition: False
+    revin: True
+    affine: False
+    subtract_last: 0
+    factor: 1
+    dropout: 0.2
+    fc_dropout: 0.2
+    head_dropout: 0.0
+    padding: 0
+    n_heads: 16
+    patch_len: 42
+    embed: timeF
+    activation: gelu
+    distil: True
+    output_attention: False
+    mix: True
+    d_ff: 256
+    axis: 1
+    num_nodes_transform: 0
+    num_nodes_patch: 0
+    num_nodes_mlp: 0
+    num_nodes_output: 0
+    num_nodes_input: 0

@@ -14,11 +14,10 @@ hydra:
     dir: logs/${now:%Y-%m-%d-%H-%M-%S}
     subdir: ${model.name}/${dataset.name}/${hydra.job.num}
 
-seed: 2021  # automatically set everywhere the seed
+seed: 2025  # automatically set everywhere the seed
 tags:
   - ${model.name}
   - ${dataset.name}
-  - final_informer_giusto
 
 workers: 0
 num_threads: 1  # limit the number of pytorch threads spawn
@@ -30,6 +29,7 @@ horizon: 96
 stride: 1
 
 #### Training params ##########################################################
+
 epochs: 100
 patience: 5
 batch_size: 16

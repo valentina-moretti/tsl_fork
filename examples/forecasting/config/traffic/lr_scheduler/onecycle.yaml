@@ -1,0 +1,9 @@
+# @package _global_
+
+lr_scheduler:
+  name: OneCycleLR
+  hparams:
+    max_lr: 0.0001 #must be equal to the lr
+    pct_start: 0.2
+    epochs: 100 #must be equal to the epochs
+    steps_per_epoch: 584 #must be equal to the number of batches

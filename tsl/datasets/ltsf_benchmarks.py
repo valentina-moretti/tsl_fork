@@ -15,7 +15,7 @@ from datetime import datetime
 from distutils.util import strtobool
 import pandas as pd
 import matplotlib.pyplot as plt
-import h5py
+# import h5py
 
 ###################   DATASETS   ###################
 
@@ -336,12 +336,12 @@ class _LTSFDataset(DatetimeDataset):
     def load_raw(self) -> pd.DataFrame:
 
         # TODO remove this 6 lines after you have run all the datasets at least once, because now you have the old version with 1 node and many channels
-        print(self.required_files_paths[0])
-        if os.path.exists(self.required_files_paths[0]):
-            os.remove(self.required_files_paths[0])
-            print(f"Removed {self.required_files_paths[0]}")
-        else:
-            print(f"{self.required_files_paths[0]} does not exist")
+        # print(self.required_files_paths[0])
+        # if os.path.exists(self.required_files_paths[0]):
+        #     os.remove(self.required_files_paths[0])
+        #     print(f"Removed {self.required_files_paths[0]}")
+        # else:
+        #     print(f"{self.required_files_paths[0]} does not exist")
 
         self.maybe_build()
         df = pd.read_hdf(self.required_files_paths[0], key='data')

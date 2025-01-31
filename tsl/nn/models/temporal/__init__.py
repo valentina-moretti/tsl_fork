@@ -3,7 +3,7 @@ from .rnn_imputers_models import BiRNNImputerModel, RNNImputerModel
 from .rnn_model import FCRNNModel, RNNModel
 from .stid_model import STIDModel
 from .tcn_model import TCNModel
-from .transformer_model import TransformerModel, FCTransformerModel, InformerModel, FCInformerModel, PatchTSTModel
+from .transformer_model import TransformerModel, FCTransformerModel, InformerModel, FCInformerModel, PatchTSTModel, FCPatchTSTModel
 
 __all__ = [
     'ARModel',
@@ -23,7 +23,8 @@ __all__ = [
     'FCTransformerModel',
     'InformerModel',
     'FCInformerModel',
-    'PatchTSTModel'
+    'PatchTSTModel',
+    'FCPatchTSTModel'
 ]
 
 classes = __all__

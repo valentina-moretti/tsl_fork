@@ -77,8 +77,8 @@ def get_model_class(model_str):
         model = models.FCInformerModel
     elif model_str == 'patchtst':
         model = models.PatchTSTModel
-    # elif model_str == 'fcpatchtst':
-    #     model = models.FCPatchTSTModel
+    elif model_str == 'fcpatchtst':
+        model = models.FCPatchTSTModel
     else:
         raise NotImplementedError(f'Model "{model_str}" not available.')
     return model

@@ -2,33 +2,33 @@
 
 #### Model params #############################################################
 model:
-  name: patchtst
+  name: fcpatchtst
   hparams:
     kernel_size: 25
-    hidden_size: 128
+    hidden_size: 16 #128
     e_layers: 3
     stride: 8
     d_layers: 1
     attn: prob
     padding_patch: 'end'
-    individual: True
+    individual: True 
     decomposition: False
-    revin: True
+    revin: False #False otherwise I cannot use num_nodes_transform
     affine: False
     subtract_last: 0
     factor: 1
-    dropout: 0.2
-    fc_dropout: 0.2
-    head_dropout: 0.0
+    dropout: 0.3 #0.2
+    fc_dropout: 0.3 #0.2
+    head_dropout: 0
     padding: 0
-    n_heads: 16
-    patch_len: 42
+    n_heads: 4 #16
+    patch_len: 16 #64
     embed: timeF
     activation: gelu
     distil: True
     output_attention: False
     mix: True
-    d_ff: 256
+    d_ff: 128 # 256
     axis: 1
     num_nodes_transform: 0
     num_nodes_patch: 0

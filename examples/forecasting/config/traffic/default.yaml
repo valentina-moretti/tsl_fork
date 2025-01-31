@@ -18,6 +18,7 @@ seed: 2025  # automatically set everywhere the seed
 tags:
   - ${model.name}
   - ${dataset.name}
+  - con_codice_finale
 
 workers: 0
 num_threads: 1  # limit the number of pytorch threads spawn

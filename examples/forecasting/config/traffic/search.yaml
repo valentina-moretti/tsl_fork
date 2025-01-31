@@ -18,14 +18,14 @@ hydra:
   mode: MULTIRUN
   sweeper:
     direction: minimize  # minimize if loss is MSE
-    n_trials: 1
+    n_trials: 100
     n_jobs: 1
     storage: null
     params:
       # Constant params
       window: 336
       horizon: 96
-      optimizer.hparams.lr: 0.0001
+      optimizer.hparams.lr: 0.00005, 0.0001, 0.0005, 0.001
       dataset: electricity
       model: fcpatchtst
       lr_scheduler: onecycle
@@ -52,38 +52,38 @@ hydra:
       # model.hparams.d_ff: 512, 1024
 
       # Search space PATCHTST
-      # model.hparams.kernel_size: 25, 50
-      # model.hparams.hidden_size: 128, 256
-      # model.hparams.e_layers: 2
-      # model.hparams.stride: 8
-      # model.hparams.d_layers: 1
-      # model.hparams.attn: prob
-      # model.hparams.padding_patch: 'end'
-      # model.hparams.individual: False
-      # model.hparams.decomposition: False
-      # model.hparams.revin: True
-      # model.hparams.affine: False
-      # model.hparams.subtract_last: 0
-      # model.hparams.factor: 1
-      # model.hparams.dropout: 0.2
-      # model.hparams.fc_dropout: 0.2
-      # model.hparams.head_dropout: 0
-      # model.hparams.padding: 0
-      # model.hparams.n_heads: 8, 16
-      # model.hparams.patch_len: 42, 64
-      # model.hparams.embed: timeF
-      # model.hparams.activation: gelu
-      # model.hparams.distil: True
-      # model.hparams.output_attention: False
-      # model.hparams.mix: True
-      # model.hparams.d_ff: 128, 256, 512
+      model.hparams.kernel_size: 25, 50
+      model.hparams.hidden_size: 128, 256
+      model.hparams.e_layers: 2
+      model.hparams.stride: 8
+      model.hparams.d_layers: 1
+      model.hparams.attn: prob
+      model.hparams.padding_patch: 'end'
+      model.hparams.individual: False
+      model.hparams.decomposition: False
+      model.hparams.revin: True
+      model.hparams.affine: False
+      model.hparams.subtract_last: 0
+      model.hparams.factor: 1
+      model.hparams.dropout: 0.2
+      model.hparams.fc_dropout: 0.2
+      model.hparams.head_dropout: 0
+      model.hparams.padding: 0
+      model.hparams.n_heads: 8, 16
+      model.hparams.patch_len: 42, 64
+      model.hparams.embed: timeF
+      model.hparams.activation: gelu
+      model.hparams.distil: True
+      model.hparams.output_attention: False
+      model.hparams.mix: True
+      model.hparams.d_ff: 128, 256
 
       train_batches: 1.0
       axis: 1 #TODO put 1
-      epochs: 100
+      epochs: 1
       batch_size: 32
       patience: 10
-      num_nodes_transform: 0 #TODO ATTENZIONE SE != 0
+      num_nodes_transform: 3 #TODO ATTENZIONE SE != 0
 
       
       

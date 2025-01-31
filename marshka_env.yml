@@ -1,0 +1,43 @@
+name: ai_hoshino
+channels:
+  - pytorch
+  - nvidia                    # remove for cpu installation
+  - pyg
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch=2.1
+  - pytorch-cuda==12.1         # remove for cpu installation
+  - lightning=2.1
+  - pyg=2.4
+  - pytorch-cluster
+  - pytorch-scatter
+  - pytorch-sparse
+  - matplotlib
+  - pip
+  - pip:
+      - hydra-core
+      - hydra-optuna-sweeper
+      - hydra-joblib-launcher
+      - torch-spatiotemporal[experiment]==0.9.4
+      - neptune-client==1.8.3
+      # Notebooks ###########
+      - jupyterlab
+      - notebook
+      # Plotting ############
+      - mpld3
+      - plotly
+
+# To install the environment:
+# > conda env create -f conda_env.yml
+
+# After env created:
+# > conda activate expressivity
+# > pip install git+https://github.com/TorchSpatiotemporal/tsl.git@dev
+
+# Alternatively,
+# > git clone https://github.com/TorchSpatiotemporal/tsl.git
+# > cd ../tsl
+# > git checkout dev
+# > pip install -e .

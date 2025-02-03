@@ -68,7 +68,6 @@ class PatchTST_backbone(nn.Module):
         if self.pretrain_head: 
             self.head = self.create_pretrain_head(self.head_nf, c_in, fc_dropout) # custom head passed as a partial func with all its kwargs
         elif head_type == 'flatten': 
-            print(c_in, self.n_vars, self.head_nf, target_window)
             self.head = Flatten_Head(self.individual, self.n_vars, self.head_nf, target_window, head_dropout=head_dropout)
         
     
@@ -78,7 +77,6 @@ class PatchTST_backbone(nn.Module):
             z = z.permute(0,2,1)
             z = self.revin_layer(z, 'norm')
             z = z.permute(0,2,1)
-            
         # do patching
         if self.padding_patch == 'end':
             z = self.padding_patch_layer(z)
@@ -108,7 +106,6 @@ class Flatten_Head(nn.Module):
         
         self.individual = individual
         self.n_vars = n_vars
-        print(nf, target_window)
         if self.individual:
             self.linears = nn.ModuleList()
             self.dropouts = nn.ModuleList()
@@ -123,6 +120,7 @@ class Flatten_Head(nn.Module):
             self.dropout = nn.Dropout(head_dropout)
             
     def forward(self, x):                                 # x: [bs x nvars x d_model x patch_num]
+
         if self.individual:
             x_out = []
             for i in range(self.n_vars):
@@ -151,18 +149,16 @@ class TSTEmbeddingEncoder(nn.Module):
         super().__init__()
         
         self.patch_num = patch_num
-        self.patch_len = patch_len
+        self.patch_len = patch_len*c_in
         self.channel_independent = channel_independent
         
 
         # Input encoding
         q_len = patch_num
-        self.W_P = nn.Linear(patch_len, d_model)        # Eq 1: projection of feature vectors onto a d-dim vector space
-        self.seq_len = q_len
-        self.pe = pe
-        self.learn_pe = learn_pe
-        self.d_model = d_model
-        
+        self.d_model = d_model * c_in
+        self.W_P = nn.Linear(self.patch_len, self.d_model)        # Eq 1: projection of feature vectors onto a d-dim vector space
+
+        self.W_pos = positional_encoding(pe, learn_pe, self.patch_num, self.d_model)
 
         # Positional encoding
 
@@ -170,36 +166,35 @@ class TSTEmbeddingEncoder(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         # Encoder
-        self.encoder = TSTEncoder(q_len, d_model, n_heads, d_k=d_k, d_v=d_v, d_ff=d_ff, norm=norm, attn_dropout=attn_dropout, dropout=dropout,
+        self.encoder = TSTEncoder(q_len, self.d_model, n_heads, d_k=d_k, d_v=d_v, d_ff=d_ff, norm=norm, attn_dropout=attn_dropout, dropout=dropout,
                                    pre_norm=pre_norm, activation=act, res_attention=res_attention, n_layers=n_layers, store_attn=store_attn)
 
         
     def forward(self, x) -> Tensor:                                              # x: [bs x nvars x patch_len x patch_num]
         n_vars = x.shape[1]
+        
         # Input encoding
-        if not self.channel_independent:
-            q_len = x.shape[1] * self.patch_num
-        else:
-            q_len = self.patch_num
-        W_pos = positional_encoding(self.pe, self.learn_pe, q_len, self.d_model).cuda()
 
         x = x.permute(0,1,3,2)                                                   # x: [bs x nvars x patch_num x patch_len]
-        x = self.W_P(x)                                                          # x: [bs x nvars x patch_num x d_model]
-
+        
         if self.channel_independent:
-            u = torch.reshape(x, (x.shape[0]*x.shape[1],x.shape[2],x.shape[3]))  # u: [bs * nvars x patch_num x d_model]
+            u = torch.reshape(x, (x.shape[0]*x.shape[1],x.shape[2],x.shape[3]))  # u: [bs * nvars x patch_num x patch_len]
         else:
-            u = torch.reshape(x, (x.shape[0],x.shape[2]*x.shape[1],x.shape[3]))  # u: [bs x patch_num * nvars x d_model]
-        u = u+ W_pos
-        u = self.dropout(u)                                         # u: [bs * nvars x patch_num x d_model]
+            u = torch.reshape(x, (x.shape[0],x.shape[2],x.shape[1]*x.shape[3]))  # u: [bs x patch_num x nvars * patch_len]
+
+
+        u = self.W_P(u)                                                          # x: [bs x nvars x patch_num x d_model]
+
+        u = u + self.W_pos
+        u = self.dropout(u)                                                      # u: [bs * nvars x patch_num x d_model] or u: [bs x patch_num x nvars * patch_len]
 
         # Encoder
-        z = self.encoder(u)                                                      # z: [bs * nvars x patch_num x d_model]
+        z = self.encoder(u)                                                      # z: [bs * nvars x patch_num x d_model] or u: [bs x patch_num x nvars * patch_len]
 
         if self.channel_independent:
             z = torch.reshape(z, (-1,n_vars,z.shape[-2],z.shape[-1]))            # z: [bs x nvars x patch_num x d_model]
         else:
-            z = torch.reshape(z, (z.shape[0],n_vars,-1,z.shape[-1]))             # z: [bs x patch_num x nvars x d_model]
+            z = torch.reshape(z, (z.shape[0],n_vars,z.shape[1],-1))             # z: [bs x nvars x patch_num x d_model]
         z = z.permute(0,1,3,2)                                                   # z: [bs x nvars x d_model x patch_num]
         
         return z    

@@ -11,7 +11,7 @@ model:
     d_layers: 1
     attn: prob
     padding_patch: 'end'
-    individual: True
+    individual: False
     decomposition: False
     revin: True
     affine: False
@@ -22,7 +22,7 @@ model:
     head_dropout: 0.0
     padding: 0
     n_heads: 16
-    patch_len: 42
+    patch_len: 16
     embed: timeF
     activation: gelu
     distil: True
